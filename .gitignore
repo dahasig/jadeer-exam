@@ -19,8 +19,9 @@ project.fragment.lock.json
 Thumbs.db
 Desktop.ini
 
-## App local data & logs
-/data/
+## App local runtime data & logs (not the C# Data/ project folder)
+/data/snapshots/
+/data/question-images/
 **/snapshots/
 *.db
 *.db-shm
