@@ -14,11 +14,17 @@ using Microsoft.Extensions.Localization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Railway / cloud: bind to $PORT
+// Railway / cloud: always bind to $PORT (CLI --urls also set in Dockerfile CMD)
 var listenPort = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrWhiteSpace(listenPort))
 {
+    // Clear any baked ASPNETCORE_URLS so healthcheck hits the same port Railway probes
+    Environment.SetEnvironmentVariable("ASPNETCORE_URLS", $"http://0.0.0.0:{listenPort}");
     builder.WebHost.UseUrls($"http://0.0.0.0:{listenPort}");
+}
+else
+{
+    builder.WebHost.UseUrls("http://0.0.0.0:8080");
 }
 
 var connectionString = ResolveMysqlConnectionString(builder.Configuration);
@@ -113,8 +119,26 @@ builder.Services.AddAntiforgery(options =>
 
 var app = builder.Build();
 
+// Earliest possible liveness — before auth / localization / DB (Railway healthcheck)
+app.Use(async (ctx, next) =>
+{
+    if (HttpMethods.IsGet(ctx.Request.Method)
+        && (ctx.Request.Path == "/health" || ctx.Request.Path == "/health/"))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status200OK;
+        ctx.Response.ContentType = "text/plain; charset=utf-8";
+        await ctx.Response.WriteAsync("ok");
+        return;
+    }
+
+    await next();
+});
+
 var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
 logger.LogInformation("MySQL host hint: {Hint}", ConnectionHostHint(connectionString));
+logger.LogInformation("PORT={Port} ASPNETCORE_URLS={Urls}",
+    Environment.GetEnvironmentVariable("PORT") ?? "(null)",
+    Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "(null)");
 
 // لا نمنع فتح المنفذ بسبب MySQL — وإلا يفشل Healthcheck على Railway
 app.Lifetime.ApplicationStarted.Register(() =>

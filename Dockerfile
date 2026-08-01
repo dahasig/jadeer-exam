@@ -9,7 +9,7 @@ RUN dotnet publish Jadeer.Exam.csproj -c Release -o /app/publish /p:UseAppHost=f
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 COPY --from=build /app/publish .
-ENV ASPNETCORE_URLS=http://0.0.0.0:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
+# Do NOT set ASPNETCORE_URLS here — Railway injects PORT and it must win.
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "Jadeer.Exam.dll"]
+CMD ["sh", "-c", "echo Listening on PORT=${PORT:-8080} && exec dotnet Jadeer.Exam.dll --urls http://0.0.0.0:${PORT:-8080}"]
