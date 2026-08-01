@@ -1,0 +1,54 @@
+﻿@{
+    var graderOnly = ViewBag.GraderOnly as bool? == true;
+    ViewData["Title"] = Localizer["essay.title"].Value;
+    ViewData["ActiveNav"] = graderOnly ? "grading" : "operations";
+    dynamic attempt = ViewBag.Attempt;
+    var essayRows = ViewBag.EssayRows as System.Collections.IEnumerable;
+}
+<header class="page-topbar card">
+    <div>
+        <h1 class="page-title">@Localizer["essay.title"]</h1>
+        <p class="page-subtitle muted">
+            <span>@Localizer["essay.candidate"]</span>
+            <span>@Txt.Line(attempt.CandidateUsername, attempt.Exam.Title)</span>
+        </p>
+    </div>
+    <div class="page-topbar-actions">
+        <a class="btn-outline" asp-controller="Grading" asp-action="Grading">@Localizer["grading.back"]</a>
+    </div>
+</header>
+<div class="page-content">
+    <section class="card panel">
+        <p>@Localizer["essay.objective"] @(attempt.ObjectiveScore != null ? attempt.ObjectiveScore : 0)</p>
+        <form class="admin-form" method="post" asp-controller="Grading" asp-action="GradeEssay" asp-route-id="@attempt.Id">
+            @Html.AntiForgeryToken()
+            @if (essayRows != null)
+            {
+                foreach (object row in essayRows)
+                {
+                    var mark = ViewMap.Get(row, "mark");
+                    var questionId = ViewMap.Get(row, "questionId");
+                    <div class="card panel">
+                        <h3>@ViewMap.Get(row, "text")</h3>
+                        @if (ViewMap.Get(row, "topic") != null)
+                        {
+                            <small class="muted">@Localizer["essay.topic"] @ViewMap.Get(row, "topic")</small>
+                        }
+                        @if (ViewMap.Get(row, "difficulty") != null)
+                        {
+                            <small class="muted">@Localizer["essay.difficulty"] @ViewMap.Get(row, "difficulty")</small>
+                        }
+                        @if (ViewMap.Get(row, "rubric") != null)
+                        {
+                            <small class="muted">@Localizer["essay.rubric"] @ViewMap.Get(row, "rubric")</small>
+                        }
+                        <p>@Localizer["essay.answer"] @ViewMap.Str(row, "answer")</p>
+                        <input type="number" min="0" max="@mark" name="score-@questionId"
+                               placeholder="@Localizer["essay.score.placeholder", mark]" required>
+                    </div>
+                }
+            }
+            <button class="btn-primary" type="submit">@Localizer["essay.save"]</button>
+        </form>
+    </section>
+</div>

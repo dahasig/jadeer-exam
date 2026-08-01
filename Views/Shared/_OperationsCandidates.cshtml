@@ -1,0 +1,309 @@
+﻿@{
+    var effectiveExamId = ViewBag.EffectiveExamId;
+    var selectedExamId = ViewBag.SelectedExamId;
+    var isAdmin = ViewBag.IsAdmin as bool? == true;
+    var mailEnabled = ViewBag.MailEnabled as bool? == true;
+    var exams = ViewBag.Exams as System.Collections.IEnumerable;
+    var candidates = ViewBag.Candidates as System.Collections.IEnumerable;
+    var graders = ViewBag.Graders as System.Collections.IEnumerable;
+    var candidateManageRows = ViewBag.CandidateManageRows as System.Collections.IEnumerable;
+    dynamic setupExam = ViewBag.SetupExam;
+    var q = Context.Request.Query;
+    string Q(string key) => q.ContainsKey(key) ? q[key].ToString() : "";
+    bool Has(string key) => q.ContainsKey(key);
+}
+<div class="card ops-wizard-card">
+    <div class="ops-wizard-panel">
+        <h2 class="panel-heading">@Localizer["ops.tab.candidates"]</h2>
+
+        @if (Has("candidate_added")) { <p class="form-success">@Localizer["ops.candidates.added.success"]</p> }
+        @if (Has("assigned")) { <p class="form-success">@Localizer["ops.candidates.assigned.success"]</p> }
+        @if (Q("error") == "candidate_exists") { <p class="form-error">@Localizer["ops.candidates.error.exists"]</p> }
+        @if (Q("error") == "candidate_exists_assign") { <p class="form-error">@Localizer["ops.candidates.error.exists_assign"]</p> }
+        @if (Q("error") == "candidate_email_taken") { <p class="form-error">@Localizer["ops.candidates.error.email_taken"]</p> }
+        @if (Q("error") == "candidate_national_id") { <p class="form-error">@Localizer["ops.candidates.error.national_id"]</p> }
+        @if (Q("error") == "candidate_national_id_staff") { <p class="form-error">@Localizer["ops.candidates.error.national_id_staff"]</p> }
+        @if (Q("error") == "candidate_invalid") { <p class="form-error">@Localizer["ops.candidates.error.invalid"]</p> }
+        @if (Q("error") == "assign_duplicate") { <p class="form-error">@Localizer["ops.candidates.error.duplicate"]</p> }
+        @if (Q("error") == "assign_forbidden") { <p class="form-error">@Localizer["ops.candidates.error.forbidden"]</p> }
+        @if (Q("error") == "assign_invalid") { <p class="form-error">@Localizer["ops.candidates.error.invalid"]</p> }
+        @if (Has("practical_saved")) { <p class="form-success">@Localizer["ops.practical.saved"]</p> }
+        @if (Has("practical_graded")) { <p class="form-success">@Localizer["ops.practical.score.saved"]</p> }
+        @if (Q("error") == "practical") { <p class="form-error">@Localizer["ops.error.practical"]</p> }
+        @if (Q("error") == "practical_budget") { <p class="form-error">@Localizer["ops.error.practical.budget"]</p> }
+        @if (Has("schedule_saved")) { <p class="form-success">@Localizer["ops.schedule.saved"]</p> }
+        @if (Q("error") == "schedule") { <p class="form-error">@Localizer["ops.error.schedule"]</p> }
+        @if (Q("error") == "schedule_invalid") { <p class="form-error">@Localizer["ops.error.schedule.invalid"]</p> }
+
+        @if (setupExam != null)
+        {
+            <section class="admin-block">
+                <h3 class="sub-heading">@Localizer["ops.schedule.title"]</h3>
+                <form class="admin-form form-grid-2" asp-controller="Admin" asp-action="SaveSchedule" asp-route-id="@effectiveExamId" method="post">
+                    @Html.AntiForgeryToken()
+                    <label style="grid-column:1/-1">
+                        <span class="muted">@Localizer["ops.schedule.datetime"]</span>
+                        <input type="datetime-local" name="scheduledAt" style="width:100%;margin-top:6px"
+                               required="@(mailEnabled ? "required" : null)"
+                               value="@(setupExam.ScheduledAt != null ? ((DateTime)setupExam.ScheduledAt).ToString("yyyy-MM-ddTHH:mm") : "")">
+                    </label>
+                    <label style="grid-column:1/-1">
+                        <span class="muted">@Localizer["ops.schedule.instructions"]</span>
+                        <textarea name="instructions" rows="4" style="width:100%;margin-top:6px"
+                                  placeholder="@Localizer["ops.schedule.instructions.placeholder"]">@setupExam.Instructions</textarea>
+                    </label>
+                    <button class="btn-outline" type="submit" style="grid-column:1/-1">@Localizer["ops.schedule.save"]</button>
+                </form>
+            </section>
+
+            <hr class="soft-divider">
+            <h3 class="sub-heading">@Localizer["ops.practical.settings"]</h3>
+            <form class="admin-form form-grid-2" asp-controller="Admin" asp-action="PracticalSettings" asp-route-id="@effectiveExamId" method="post">
+                @Html.AntiForgeryToken()
+                <label class="inline-check" style="grid-column:1/-1">
+                    <input type="checkbox" name="practicalEnabled" value="true" checked="@(setupExam.PracticalEnabled == true ? "checked" : null)">
+                    <span>@Localizer["ops.practical.enabled"]</span>
+                </label>
+                <input type="number" name="practicalMaxMarks" min="1"
+                       placeholder="@Localizer["ops.practical.maxMarks.placeholder"]"
+                       value="@setupExam.PracticalMaxMarks"
+                       disabled="@(setupExam.TotalMarks == null ? "disabled" : null)"
+                       max="@(setupExam.TotalMarks != null ? setupExam.TotalMarks - 1 : "")">
+                <button class="btn-outline" type="submit" style="grid-column:1/-1">@Localizer["ops.practical.save"]</button>
+            </form>
+        }
+
+        @if (Has("grader_assigned")) { <p class="form-success">@Localizer["ops.grader.assigned.success"]</p> }
+        @if (Q("error") == "wizard_questions") { <p class="form-error">@Localizer["ops.wizard.error.wizard_questions"]</p> }
+
+        <section class="admin-block card">
+            <h3 class="sub-heading">@Localizer["ops.candidates.add"]</h3>
+            <form class="admin-form form-grid-2" asp-controller="Admin" asp-action="CreateCandidate" method="post">
+                @Html.AntiForgeryToken()
+                @if (effectiveExamId != null)
+                {
+                    <input type="hidden" name="examId" value="@effectiveExamId">
+                }
+                <input type="text" name="fullName" placeholder="@Localizer["admin.examiner.fullName"]" required>
+                <input type="email" name="email" placeholder="@Localizer["admin.examiner.email"]" required>
+                <input type="text" name="nationalId" placeholder="@Localizer["admin.examiner.nationalId"]" required style="grid-column:1/-1">
+                @if (effectiveExamId != null)
+                {
+                    <label class="inline-check" style="grid-column:1/-1">
+                        <input type="checkbox" name="assignToExam" value="true" checked>
+                        <span>@Localizer["ops.candidates.autoAssign"]</span>
+                    </label>
+                }
+                <button class="btn-primary" type="submit" style="grid-column:1/-1">@Localizer["ops.candidates.add"]</button>
+            </form>
+        </section>
+
+        <hr class="soft-divider">
+        <h3 class="sub-heading">@Localizer["ops.candidates.assign"]</h3>
+        <form class="admin-form form-grid-2" asp-controller="Admin" asp-action="AssignCandidate" method="post">
+            @Html.AntiForgeryToken()
+            <select name="examId" id="assignCandidateExamId" required>
+                <option value="">@Localizer["ops.q.selectExam"]</option>
+                @if (exams != null)
+                {
+                    foreach (dynamic exam in exams)
+                    {
+                        <option value="@exam.Id" selected="@(selectedExamId != null && Equals(selectedExamId, exam.Id) ? "selected" : null)">@exam.Title</option>
+                    }
+                }
+            </select>
+            <select name="email" required>
+                <option value="">@Localizer["ops.candidates.select"]</option>
+                @if (candidates != null)
+                {
+                    foreach (dynamic c in candidates)
+                    {
+                        <option value="@c.Email">@Txt.Person((string)c.FullName, (string)c.Email)</option>
+                    }
+                }
+            </select>
+            <button class="btn-primary" type="submit" style="grid-column:1/-1">@Localizer["ops.candidates.assign"]</button>
+        </form>
+
+        @if (effectiveExamId != null)
+        {
+            <hr class="soft-divider">
+            <section class="admin-block card">
+                <h3 class="sub-heading">@Localizer["ops.grader.assign"]</h3>
+                @if (setupExam != null && setupExam.AssignedGrader != null)
+                {
+                    var gName = setupExam.AssignedGrader.FullName != null ? setupExam.AssignedGrader.FullName : setupExam.AssignedGrader.Email;
+                    <p class="muted">@Localizer["ops.grader.current", gName]</p>
+                }
+                <form class="admin-form form-grid-2" asp-controller="Admin" asp-action="AssignGrader" asp-route-id="@effectiveExamId" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="after" value="candidates">
+                    <select name="graderUserId" required style="grid-column:1/-1">
+                        <option value="">@Localizer["ops.grader.select"]</option>
+                        @if (graders != null)
+                        {
+                            foreach (dynamic g in graders)
+                            {
+                                var sel = setupExam != null && setupExam.AssignedGrader != null && Equals(setupExam.AssignedGrader.Id, g.Id);
+                                <option value="@g.Id" selected="@(sel ? "selected" : null)">@Txt.Person((string)g.FullName, (string)g.Email)</option>
+                            }
+                        }
+                    </select>
+                    <button class="btn-outline" type="submit" style="grid-column:1/-1">@Localizer["ops.grader.assignBtn"]</button>
+                </form>
+            </section>
+
+            <hr class="soft-divider">
+            <section class="admin-block">
+                <h3 class="sub-heading">@Localizer["ops.candidates.manage"]</h3>
+                @if (Q("reset") == "1") { <p class="form-success">@Localizer["ops.candidates.reset.success"]</p> }
+                @if (Q("unassigned") == "1") { <p class="form-success">@Localizer["ops.candidates.unassign.success"]</p> }
+                @{
+                    var rows = candidateManageRows?.Cast<object>().ToList() ?? new List<object>();
+                    var practicalOn = setupExam != null && setupExam.PracticalEnabled == true;
+                }
+                @if (rows.Count > 0)
+                {
+                    <div class="table-shell">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>@Localizer["admin.examiner.col.name"]</th>
+                                <th>@Localizer["admin.examiner.col.email"]</th>
+                                <th>@Localizer["reports.col.status"]</th>
+                                <th>@Localizer["reports.col.score"]</th>
+                                @if (practicalOn) { <th>@Localizer["ops.practical.score"]</th> }
+                                @if (mailEnabled) { <th>@Localizer["ops.mail.status"]</th> }
+                                <th>@Localizer["admin.examiner.col.actions"]</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (dynamic row in rows)
+                            {
+                                var statusKey = ViewMap.Get(row, "statusKey")?.ToString();
+                                <tr>
+                                    <td>@Txt.V(ViewMap.Get(row, "fullName"))</td>
+                                    <td>@Txt.V(ViewMap.Get(row, "email"))</td>
+                                    <td>
+                                        @if (statusKey == "done") { <span>@Localizer["reports.candidate.status.done"]</span> }
+                                        @if (statusKey == "in_progress") { <span>@Localizer["reports.candidate.status.pending"]</span> }
+                                        @if (statusKey == "not_started") { <span>@Localizer["ops.candidates.status.notStarted"]</span> }
+                                    </td>
+                                    <td>@(ViewMap.Get(row, "score") != null ? ViewMap.Get(row, "score") : "—")</td>
+                                    @if (practicalOn)
+                                    {
+                                        <td>
+                                            @if (statusKey == "done" && ViewMap.Get(row, "attemptId") != null)
+                                            {
+                                                <form class="practical-score-form"
+                                                      asp-controller="Grading" asp-action="PracticalScore" asp-route-id="@ViewMap.Get(row, "attemptId")" method="post">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="after" value="candidates">
+                                                    <input type="number" name="practicalScore" min="0"
+                                                           max="@setupExam.PracticalMaxMarks"
+                                                           value="@ViewMap.Get(row, "practicalScore")"
+                                                           placeholder="@Localizer["ops.practical.score.placeholder"]">
+                                                    <button class="btn-outline" type="submit">@Localizer["ops.practical.saveScore"]</button>
+                                                </form>
+                                            }
+                                            @if (statusKey != "done")
+                                            {
+                                                <span>—</span>
+                                            }
+                                        </td>
+                                    }
+                                    @if (mailEnabled)
+                                    {
+                                        <td>
+                                            @if (ViewMap.Bool(row, "invitationSent")) { <span>@Localizer["ops.mail.invitationSent"]</span> }
+                                            else { <span class="muted">@Localizer["ops.mail.invitationPending"]</span> }
+                                            @if (ViewMap.Bool(row, "reminderSent")) { <span>@Localizer["ops.mail.reminderSent"]</span> }
+                                        </td>
+                                    }
+                                    <td>
+                                        <div class="table-actions">
+                                            @if (ViewMap.Bool(row, "needsEssayGrading"))
+                                            {
+                                                <a class="btn-primary"
+                                                   asp-controller="Grading" asp-action="GradeEssay" asp-route-id="@ViewMap.Get(row, "attemptId")">@Localizer["grading.action.grade"]</a>
+                                            }
+                                            @if (statusKey != "not_started")
+                                            {
+                                                <form asp-controller="Admin" asp-action="ResetCandidate" method="post"
+                                                      data-confirm-msg="@Localizer["ops.candidates.reset.confirm"]"
+                                                      onsubmit="return confirm(this.dataset.confirmMsg);">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="examId" value="@effectiveExamId">
+                                                    <input type="hidden" name="email" value="@ViewMap.Get(row, "email")">
+                                                    <button class="btn-outline" type="submit">@Localizer["ops.candidates.resetAttempt"]</button>
+                                                </form>
+                                            }
+                                            <form asp-controller="Admin" asp-action="UnassignCandidate" method="post"
+                                                  data-confirm-msg="@Localizer["ops.candidates.unassign.confirm"]"
+                                                  onsubmit="return confirm(this.dataset.confirmMsg);">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="examId" value="@effectiveExamId">
+                                                <input type="hidden" name="email" value="@ViewMap.Get(row, "email")">
+                                                <button class="btn-outline" type="submit">@Localizer["ops.candidates.unassign"]</button>
+                                            </form>
+                                            @if (isAdmin && ViewMap.Get(row, "userId") != null)
+                                            {
+                                                <form asp-controller="Admin" asp-action="DeleteUser" asp-route-id="@ViewMap.Get(row, "userId")" method="post"
+                                                      data-confirm-msg="@Localizer["ops.candidates.delete.confirm"]"
+                                                      onsubmit="return confirm(this.dataset.confirmMsg);">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="examId" value="@effectiveExamId">
+                                                    <button class="btn-danger" type="submit">@Localizer["ops.candidates.delete"]</button>
+                                                </form>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <p class="empty-state">@Localizer["ops.candidates.manage.empty"]</p>
+                }
+            </section>
+        }
+
+        <hr class="soft-divider">
+        <h3 class="sub-heading">@Localizer["ops.candidates.excel.upload"]</h3>
+        <a class="btn-outline" href="~/admin/templates/exam-candidates.xlsx">@Localizer["ops.excel.download.template"]</a>
+        <form id="importCandidatesExcelForm" class="admin-form" asp-controller="Admin" asp-action="ImportCandidatesExcel" method="post" enctype="multipart/form-data" style="margin-top:10px">
+            @Html.AntiForgeryToken()
+            <select name="examId" id="importCandidatesExamId" required>
+                <option value="">@Localizer["ops.q.selectExam"]</option>
+                @if (exams != null)
+                {
+                    foreach (dynamic exam in exams)
+                    {
+                        <option value="@exam.Id" selected="@(selectedExamId != null && Equals(selectedExamId, exam.Id) ? "selected" : null)">@exam.Title</option>
+                    }
+                }
+            </select>
+            <input type="file" name="file" accept=".xlsx,.xls" required>
+            <button class="btn-outline" type="submit">@Localizer["ops.excel.import"]</button>
+        </form>
+
+        @if (effectiveExamId != null)
+        {
+            <form class="admin-form"
+                  asp-controller="Admin" asp-action="PublishExam" asp-route-id="@effectiveExamId"
+                  method="post"
+                  style="margin-top:16px">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="after" value="list">
+                <button class="btn-primary" type="submit" style="width:100%">@Localizer["ops.finishSetup"]</button>
+            </form>
+        }
+        @if (Q("error") == "publish")
+        {
+            <p class="form-error">@Localizer["ops.error.publish"]</p>
+        }
+    </div>
+</div>

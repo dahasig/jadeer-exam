@@ -1,0 +1,67 @@
+@{
+    ViewData["Title"] = Localizer["exam.preview.title"].Value;
+    ViewData["ActiveNav"] = "operations";
+    dynamic exam = ViewBag.Exam;
+    var questions = ViewBag.Questions as System.Collections.IEnumerable;
+    var questionCount = ViewBag.QuestionCount ?? (questions?.Cast<object>().Count() ?? 0);
+    var isEnglish = ViewBag.IsEnglish as bool? == true;
+    var qList = questions?.Cast<object>().ToList() ?? new List<object>();
+}
+<header class="page-topbar card">
+    <div>
+        <h1 class="page-title">@exam.Title</h1>
+        <p class="page-subtitle muted">@Localizer["exam.preview.meta", exam.DurationMinutes, questionCount]</p>
+    </div>
+    <div class="page-topbar-actions">
+        <a class="btn-outline"
+           asp-controller="Admin" asp-action="Operations"
+           asp-route-view="create" asp-route-tab="questions" asp-route-examId="@exam.Id" asp-route-qtype="mcq">@Localizer["exam.preview.editQuestions"]</a>
+        @if (exam.Published != true)
+        {
+            <form asp-controller="Admin" asp-action="PublishExam" asp-route-id="@exam.Id" method="post">
+                @Html.AntiForgeryToken()
+                <button class="btn-primary" type="submit">@Localizer["exam.preview.publish"]</button>
+            </form>
+        }
+        @if (exam.Published == true)
+        {
+            <span class="badge">@Localizer["exam.preview.published"]</span>
+        }
+    </div>
+</header>
+<div class="page-content">
+    @{ var st = 0; }
+    @foreach (dynamic q in qList)
+    {
+        st++;
+        <section class="card panel">
+            <h3>@Localizer["exam.preview.question", st]</h3>
+            <p>@q.Text</p>
+            @if (q.HasImage == true)
+            {
+                <figure class="question-image-wrap">
+                    <img class="question-image"
+                         src="~/admin/exams/@exam.Id/questions/@q.Id/image"
+                         alt="@Localizer["exam.question.image.alt"]"/>
+                </figure>
+            }
+            @if (q.Essay == true)
+            {
+                <p class="muted">@Localizer["exam.preview.essay"]: @q.Mark</p>
+            }
+            else
+            {
+                <ul class="preview-options">
+                    @if (q.OptionA != null) { <li>@(isEnglish ? "A) " : "أ) ")@q.OptionA</li> }
+                    @if (q.OptionB != null) { <li>@(isEnglish ? "B) " : "ب) ")@q.OptionB</li> }
+                    @if (q.OptionC != null) { <li>@(isEnglish ? "C) " : "ج) ")@q.OptionC</li> }
+                    @if (q.OptionD != null) { <li>@(isEnglish ? "D) " : "د) ")@q.OptionD</li> }
+                </ul>
+            }
+        </section>
+    }
+    @if (qList.Count == 0)
+    {
+        <p class="empty-state">@Localizer["exam.preview.noQuestions"]</p>
+    }
+</div>

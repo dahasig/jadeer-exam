@@ -1,0 +1,34 @@
+@{
+    ViewData["Title"] = Localizer["media.viewer.title"].Value;
+    ViewData["ActiveNav"] = "reports";
+    ViewData["BodyClass"] = "app-body media-viewer-page";
+    var isVideo = ViewBag.IsVideo as bool? == true;
+}
+<header class="page-topbar card">
+    <div>
+        <h1 class="page-title">@Localizer["media.viewer.title"]</h1>
+    </div>
+    <div class="page-topbar-actions">
+        <a class="btn-outline" href="javascript:history.back()">@Localizer["media.viewer.back"]</a>
+    </div>
+</header>
+<div class="page-content">
+    <section class="card panel media-viewer-panel">
+        @if (isVideo)
+        {
+            <div class="stamped-media stamped-media--large">
+                <video controls autoplay playsinline src="@ViewBag.MediaUrl"></video>
+                <div class="stamped-media-overlay">
+                    <span class="stamped-media-name">@ViewBag.StampName</span>
+                    <span class="stamped-media-time">@ViewBag.StampTime</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="stamped-media stamped-media--large">
+                <img src="@ViewBag.MediaUrl" alt="@Localizer["reports.snapshot.alt"]"/>
+            </div>
+        }
+    </section>
+</div>

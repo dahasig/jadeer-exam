@@ -1,0 +1,32 @@
+@{
+    ViewData["Title"] = Localizer["dashboard.title"].Value;
+    ViewData["ActiveNav"] = "dashboard";
+}
+<div class="page-content">
+@if (User.IsInRole("CANDIDATE"))
+{
+    <section class="card panel">
+        <h2 class="panel-heading">@Localizer["dashboard.yourExams"]</h2>
+        @{
+            var exams = ViewBag.Exams as System.Collections.IEnumerable;
+            var list = exams?.Cast<object>().ToList() ?? new List<object>();
+        }
+        @if (list.Count == 0)
+        {
+            <div class="empty-state">@Localizer["dashboard.noExams"]</div>
+        }
+        @foreach (dynamic exam in list)
+        {
+            <div class="exam-card">
+                <div class="exam-card-meta">
+                    <strong>@exam.Title</strong>
+                    <span class="muted exam-opportunity-line">@Txt.OpportunityLine(exam)</span>
+                </div>
+                <div class="exam-card-actions">
+                    <a class="btn-primary" asp-controller="Exam" asp-action="Precheck" asp-route-id="@exam.Id">@Localizer["dashboard.startExam"]</a>
+                </div>
+            </div>
+        }
+    </section>
+}
+</div>

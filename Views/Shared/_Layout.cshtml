@@ -1,0 +1,38 @@
+﻿@{
+    var pageLang = ViewData["PageLang"] as string ?? "ar";
+    var pageDir = ViewData["PageDir"] as string ?? "rtl";
+    var assetsVersion = ViewData["AssetsVersion"];
+    var bodyClass = ViewData["BodyClass"] as string ?? "app-body";
+    var title = ViewData["Title"] as string ?? Localizer["app.brand"].Value;
+    var dataExamId = ViewData["DataExamId"]?.ToString();
+}
+<!DOCTYPE html>
+<html lang="@pageLang" dir="@pageDir">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@title | @Localizer["app.brand"]</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/style.css?v=@assetsVersion">
+    <script defer src="~/js/page-ux.js?v=@assetsVersion"></script>
+    <script>
+        window.__RC_THEME = {
+            dark: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["theme.label.dark"].Value)),
+            light: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["theme.label.light"].Value))
+        };
+    </script>
+    @await RenderSectionAsync("Head", required: false)
+</head>
+<body class="@bodyClass" data-exam-id="@dataExamId" data-page-lang="@pageLang">
+<div class="app-shell">
+    <partial name="_Sidebar" />
+    <main class="app-main">
+        @RenderBody()
+    </main>
+</div>
+<script defer src="~/js/theme.js?v=@assetsVersion"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

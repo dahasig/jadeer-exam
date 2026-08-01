@@ -1,0 +1,63 @@
+﻿@{
+    ViewData["Title"] = Localizer["timeline.title"].Value;
+    ViewData["ActiveNav"] = "reports";
+    dynamic attempt = ViewBag.Attempt;
+    var timelineRows = ViewBag.TimelineRows as System.Collections.IEnumerable;
+}
+<header class="page-topbar card">
+    <div>
+        <h1 class="page-title">@Localizer["timeline.title"]</h1>
+        <p class="page-subtitle muted">
+            <span>@Localizer["timeline.candidate"]</span>
+            <span>@Txt.Line(attempt.CandidateUsername, attempt.Exam.Title)</span>
+        </p>
+    </div>
+    <div class="page-topbar-actions">
+        <a class="btn-outline" asp-controller="Reports" asp-action="Reports">@Localizer["timeline.back"]</a>
+    </div>
+</header>
+<div class="page-content">
+    <section class="card panel">
+        @if (timelineRows != null)
+        {
+            foreach (object row in timelineRows)
+            {
+                var eventTime = ViewMap.Get(row, "eventTime");
+                var timeStr = eventTime != null ? ((DateTime)eventTime).ToString("yyyy-MM-dd HH:mm:ss") : "—";
+                var confidenceScore = ViewMap.Get(row, "confidenceScore");
+                var snapshotFileName = ViewMap.Get(row, "snapshotFileName");
+                var videoFileName = ViewMap.Get(row, "videoFileName");
+                <div class="event-row">
+                    <span class="badge">@ViewMap.Get(row, "severityLabel")</span>
+                    <span>@ViewMap.Get(row, "eventTypeLabel")</span>
+                    <small>@ViewMap.Str(row, "details")</small>
+                    @if (confidenceScore != null)
+                    {
+                        <small>@Localizer["timeline.confidence"] @confidenceScore%</small>
+                    }
+                    <small class="event-time">@timeStr</small>
+                    @if (snapshotFileName != null)
+                    {
+                        <a class="btn-outline"
+                           asp-controller="Reports" asp-action="MediaView"
+                           asp-route-examId="@attempt.Exam.Id"
+                           asp-route-fileName="@snapshotFileName"
+                           asp-route-username="@attempt.CandidateUsername"
+                           asp-route-capturedAt="@timeStr"
+                           target="_blank" rel="noopener">@Localizer["timeline.snapshot"]</a>
+                    }
+                    @if (videoFileName != null)
+                    {
+                        <a class="btn-outline"
+                           asp-controller="Reports" asp-action="MediaView"
+                           asp-route-examId="@attempt.Exam.Id"
+                           asp-route-fileName="@videoFileName"
+                           asp-route-username="@attempt.CandidateUsername"
+                           asp-route-capturedAt="@timeStr"
+                           target="_blank" rel="noopener">@Localizer["reports.openVideo"]</a>
+                    }
+                </div>
+            }
+        }
+    </section>
+</div>

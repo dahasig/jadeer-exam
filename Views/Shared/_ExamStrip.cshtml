@@ -1,0 +1,13 @@
+@{
+    var title = ViewData["ExamStripTitle"] as string ?? "";
+}
+<header class="exam-strip card">
+    <span class="exam-strip-logo-wrap"><partial name="_BrandLogo" /></span>
+    <div>
+        <h1 class="page-title">@title</h1>
+    </div>
+    <button type="button" class="exam-strip-theme-btn theme-toggle-slot" data-theme-trigger aria-label="@Localizer["theme.label.toggle"]">
+        <span class="theme-toggle-icon" aria-hidden="true">🌙</span>
+        <span class="theme-toggle-label">@Localizer["theme.label.dark"]</span>
+    </button>
+</header>

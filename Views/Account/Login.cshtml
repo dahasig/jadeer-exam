@@ -1,0 +1,84 @@
+@{
+    Layout = null;
+    var pageLang = ViewData["PageLang"] as string ?? "ar";
+    var pageDir = ViewData["PageDir"] as string ?? "rtl";
+    var assetsVersion = ViewData["AssetsVersion"];
+    var langArUrl = ViewData["LangArUrl"] as string ?? "?lang=ar";
+    var langEnUrl = ViewData["LangEnUrl"] as string ?? "?lang=en";
+    var oauth2Enabled = ViewBag.Oauth2Enabled as bool? == true;
+}
+<!DOCTYPE html>
+<html lang="@pageLang" dir="@pageDir">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@Localizer["login.title"] | @Localizer["app.brand"]</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/style.css?v=@assetsVersion">
+    <script defer src="~/js/page-ux.js?v=@assetsVersion"></script>
+    <script>
+        window.__RC_THEME = {
+            dark: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["theme.label.dark"].Value)),
+            light: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["theme.label.light"].Value))
+        };
+    </script>
+</head>
+<body class="login-page">
+
+<div class="login-bg" aria-hidden="true"></div>
+
+<header class="login-top-bar">
+    <div class="login-top-left">
+        <button type="button" class="login-theme-toggle" data-theme-trigger aria-label="@Localizer["theme.label.toggle"]">
+            <span class="login-theme-toggle-icon" aria-hidden="true">🌙</span>
+            <span class="login-theme-toggle-text">@Localizer["theme.label.dark"]</span>
+        </button>
+        <div class="login-lang-switch" role="group" aria-label="Language">
+            <a class="login-lang-btn@(pageLang == "ar" ? " is-active" : "")" href="@langArUrl">عربي</a>
+            <a class="login-lang-btn@(pageLang == "en" ? " is-active" : "")" href="@langEnUrl">English</a>
+        </div>
+    </div>
+    <div class="login-top-rc-logo">
+        <img class="rc-brand-logo rc-brand-logo--color" src="~/images/logo-rc-color.png?v=@assetsVersion" alt="الهيئة الملكية للجبيل وينبع"/>
+        <img class="rc-brand-logo rc-brand-logo--white" src="~/images/logo-rc-white.png?v=@assetsVersion" alt="الهيئة الملكية للجبيل وينبع" aria-hidden="true"/>
+    </div>
+</header>
+
+<main class="login-shell">
+    <article class="login-card">
+        <header class="login-hero">
+            <h1 class="login-product">@Localizer["login.brand"]</h1>
+        </header>
+        <section class="login-body">
+            <form asp-controller="Account" asp-action="Login" method="post" class="login-form">
+                @Html.AntiForgeryToken()
+                <div class="login-field">
+                    <label for="username">@Localizer["login.username"]</label>
+                    <input id="username" type="text" name="username" required autocomplete="username" placeholder="@Localizer["login.username.placeholder"]">
+                </div>
+                <div class="login-field">
+                    <label for="password">@Localizer["login.password"]</label>
+                    <input id="password" type="password" name="password" required autocomplete="current-password" placeholder="@Localizer["login.password.placeholder"]">
+                </div>
+                <button type="submit" class="btn-primary login-submit">@Localizer["login.submit"]</button>
+                @if (oauth2Enabled)
+                {
+                    <div class="login-sso" style="margin-top:1rem;text-align:center;">
+                        <a class="btn-secondary" href="~/oauth2/authorization/azure">تسجيل الدخول عبر Microsoft (SSO)</a>
+                    </div>
+                }
+                <p class="login-forgot"><a href="#" onclick="return false;">@Localizer["login.forgot"]</a></p>
+                @if (Context.Request.Query.ContainsKey("timeout"))
+                {
+                    <p class="login-error" style="color:#b91c1c;margin-top:0.75rem;">انتهت الجلسة بسبب عدم النشاط. سجّل الدخول مجدداً.</p>
+                }
+            </form>
+        </section>
+    </article>
+</main>
+
+<script defer src="~/js/theme.js"></script>
+</body>
+</html>

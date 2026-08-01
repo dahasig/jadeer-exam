@@ -1,0 +1,276 @@
+@{
+    Layout = null;
+    dynamic exam = ViewBag.Exam;
+    var pageLang = ViewData["PageLang"] as string ?? "ar";
+    var pageDir = ViewData["PageDir"] as string ?? "rtl";
+    var assetsVersion = ViewData["AssetsVersion"];
+    var isEnglish = ViewBag.IsEnglish as bool? == true;
+    var questions = ViewBag.Questions as System.Collections.IEnumerable;
+    var qList = questions?.Cast<object>().ToList() ?? new List<object>();
+}
+<!DOCTYPE html>
+<html lang="@pageLang" dir="@pageDir">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@exam.Title | @Localizer["app.brand"]</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/style.css?v=@assetsVersion">
+    <script defer src="~/js/page-ux.js?v=@assetsVersion"></script>
+    <script>
+        window.__RC_THEME = {
+            dark: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["theme.label.dark"].Value)),
+            light: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["theme.label.light"].Value))
+        };
+    </script>
+</head>
+<body class="exam-body exam-camera-locked"
+      data-exam-id="@exam.Id"
+      data-page-lang="@pageLang"
+      data-exam-duration-minutes="@exam.DurationMinutes">
+
+<div id="cameraLockOverlay" class="camera-lock-overlay" role="dialog" aria-modal="true" aria-labelledby="cameraLockTitle">
+    <div class="camera-lock-card card">
+        <h3 class="camera-lock-title" id="cameraLockTitle">@Localizer["exam.camera.required"]</h3>
+        <p id="cameraLockDetail" class="camera-lock-detail">@Localizer["exam.camera.detail"]</p>
+        <button type="button" class="btn-primary camera-lock-action" id="cameraLockActionBtn" onclick="window.__jadeerStartCamera && window.__jadeerStartCamera()">@Localizer["exam.camera.allow"]</button>
+    </div>
+</div>
+
+<div class="exam-layout">
+@{
+    ViewData["ExamStripTitle"] = exam.Title?.ToString() ?? "";
+}
+<partial name="_ExamStrip" />
+<header class="exam-header card">
+    <div class="exam-tools">
+        <button type="button" class="btn-outline exam-calc-toggle" id="examCalcToggleBtn"
+                aria-expanded="false" aria-controls="examCalcPanel">@Localizer["exam.calculator.toggle"]</button>
+        <span id="questionProgress" class="exam-question-progress" data-template="@Localizer["exam.progress"].Value"></span>
+        <span id="questionTimer"
+              data-time-prefix="@Localizer["exam.timeLeft"].Value" data-time-undefined="@Localizer["exam.time.undefined"].Value">الوقت المتبقي: --:--</span>
+        <span id="statusText">@Localizer["exam.monitoring.active"]</span>
+    </div>
+</header>
+
+<div class="exam-camera-banner card hidden" id="cameraBanner" aria-hidden="true">
+    <button type="button" class="btn-outline" id="enableCameraBtn">@Localizer["exam.reactivate.camera"]</button>
+</div>
+
+<video id="monitorVideo" class="exam-monitor-video" playsinline muted autoplay></video>
+<canvas id="monitorCanvas" hidden></canvas>
+
+<main class="card exam-panel">
+    <p id="lastQuestionNote" class="exam-last-question-note hidden" role="status">@Localizer["exam.lastNote"]</p>
+    @{ var st = 0; }
+    @foreach (dynamic q in qList)
+    {
+        st++;
+        <div class="question-block"
+             data-question-id="@q.Id"
+             data-duration-seconds="@q.DurationSeconds"
+             data-question-index="@(st - 1)"
+             data-display-number="@st">
+            <h4>
+                <span class="question-num">@Localizer["exam.question.label"] @st</span>
+                — <span>@q.Text</span>
+            </h4>
+            @if (q.HasImage == true)
+            {
+                <figure class="question-image-wrap">
+                    <img class="question-image" src="~/exam/@exam.Id/questions/@q.Id/image"
+                         alt="@Localizer["exam.question.image.alt"]"/>
+                </figure>
+            }
+            @if (q.Essay == true)
+            {
+                <div>
+                    <textarea name="essay-@q.Id" class="essay-answer" rows="5" placeholder="@Localizer["exam.essay.placeholder"]"></textarea>
+                </div>
+            }
+            else
+            {
+                <div class="exam-options">
+                    @if (q.OptionA != null && !string.IsNullOrEmpty((string)q.OptionA))
+                    {
+                        <label class="exam-option">
+                            <input type="radio" name="q-@q.Id" value="A">
+                            <span class="exam-option-letter">@(isEnglish ? "A" : "أ")</span>
+                            <span class="exam-option-text">@q.OptionA</span>
+                        </label>
+                    }
+                    @if (q.OptionB != null && !string.IsNullOrEmpty((string)q.OptionB))
+                    {
+                        <label class="exam-option">
+                            <input type="radio" name="q-@q.Id" value="B">
+                            <span class="exam-option-letter">@(isEnglish ? "B" : "ب")</span>
+                            <span class="exam-option-text">@q.OptionB</span>
+                        </label>
+                    }
+                    @if (q.OptionC != null && !string.IsNullOrEmpty((string)q.OptionC))
+                    {
+                        <label class="exam-option">
+                            <input type="radio" name="q-@q.Id" value="C">
+                            <span class="exam-option-letter">@(isEnglish ? "C" : "ج")</span>
+                            <span class="exam-option-text">@q.OptionC</span>
+                        </label>
+                    }
+                    @if (q.OptionD != null && !string.IsNullOrEmpty((string)q.OptionD))
+                    {
+                        <label class="exam-option">
+                            <input type="radio" name="q-@q.Id" value="D">
+                            <span class="exam-option-letter">@(isEnglish ? "D" : "د")</span>
+                            <span class="exam-option-text">@q.OptionD</span>
+                        </label>
+                    }
+                </div>
+            }
+        </div>
+    }
+    <div class="exam-tools">
+        <button type="button" class="btn-outline" id="prevQuestionBtn">@Localizer["exam.prev"]</button>
+        <button type="button" class="btn-outline" id="nextQuestionBtn">@Localizer["exam.next"]</button>
+    </div>
+</main>
+
+<aside id="examCalcPanel" class="exam-calc-panel card hidden" aria-hidden="true" role="dialog"
+       aria-label="@Localizer["exam.calculator.title"]">
+    <div class="exam-calc-drag-handle">
+        <strong>@Localizer["exam.calculator.title"]</strong>
+        <div class="exam-calc-head-actions">
+            <button type="button" class="btn-outline exam-calc-mode" id="examCalcAngleMode"
+                    data-calc="angle" aria-pressed="true">DEG</button>
+            <button type="button" class="btn-outline exam-calc-close" id="examCalcClose"
+                    aria-label="@Localizer["exam.calculator.close"]">@Localizer["exam.calculator.close"]</button>
+        </div>
+    </div>
+    <div class="exam-calc-display">
+        <div id="examCalcExpr" class="exam-calc-expr">0</div>
+        <div id="examCalcResult" class="exam-calc-result">0</div>
+    </div>
+    <div class="exam-calc-grid">
+        <button type="button" class="exam-calc-btn fn" data-calc="sin">sin</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="cos">cos</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="tan">tan</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="log">log</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="ln">ln</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="sqrt">√</button>
+
+        <button type="button" class="exam-calc-btn fn" data-calc="asin">sin⁻¹</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="acos">cos⁻¹</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="atan">tan⁻¹</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="sq">x²</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="pow">xʸ</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="inv">1/x</button>
+
+        <button type="button" class="exam-calc-btn" data-calc="clear">C</button>
+        <button type="button" class="exam-calc-btn" data-calc="backspace">⌫</button>
+        <button type="button" class="exam-calc-btn" data-calc="(">(</button>
+        <button type="button" class="exam-calc-btn" data-calc=")">)</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="pi">π</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="e">e</button>
+
+        <button type="button" class="exam-calc-btn" data-calc="7">7</button>
+        <button type="button" class="exam-calc-btn" data-calc="8">8</button>
+        <button type="button" class="exam-calc-btn" data-calc="9">9</button>
+        <button type="button" class="exam-calc-btn op" data-calc="/">÷</button>
+        <button type="button" class="exam-calc-btn fn" data-calc="ans">Ans</button>
+        <button type="button" class="exam-calc-btn op" data-calc="*">×</button>
+
+        <button type="button" class="exam-calc-btn" data-calc="4">4</button>
+        <button type="button" class="exam-calc-btn" data-calc="5">5</button>
+        <button type="button" class="exam-calc-btn" data-calc="6">6</button>
+        <button type="button" class="exam-calc-btn op" data-calc="-">−</button>
+        <button type="button" class="exam-calc-btn op" data-calc="sign">±</button>
+        <button type="button" class="exam-calc-btn op" data-calc="+">+</button>
+
+        <button type="button" class="exam-calc-btn wide" data-calc="0">0</button>
+        <button type="button" class="exam-calc-btn" data-calc=".">.</button>
+        <button type="button" class="exam-calc-btn equals" data-calc="equals">=</button>
+    </div>
+</aside>
+
+<div id="warningToast" class="warning-toast hidden"></div>
+
+<footer class="exam-bottom-bar card" aria-label="@Localizer["exam.footer.actions"]">
+    <div class="exam-bottom-inner">
+        <div class="exam-footer-meta">
+            <span class="exam-camera-state" id="cameraStateText">@Localizer["exam.camera.inactive"]</span>
+            <span class="exam-session-state" id="sessionPingText">@Localizer["exam.session.connecting"]</span>
+        </div>
+        <button type="button" class="btn-primary submit-exam-btn exam-submit-main">@Localizer["exam.submit"]</button>
+    </div>
+</footer>
+</div>
+
+<script defer src="https://cdn.jsdelivr.net/npm/@@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script defer src="~/js/theme.js?v=@assetsVersion"></script>
+<script defer src="~/js/exam-question-flow.js?v=@assetsVersion"></script>
+<script>
+    window.__RC_EXAM_CALC = {
+        deg: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.calculator.deg"].Value)),
+        rad: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.calculator.rad"].Value)),
+        error: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.calculator.error"].Value))
+    };
+    window.__RC_EXAM_MONITOR = {
+        saveFail: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.saveFail"].Value)),
+        critical: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.critical"].Value)),
+        monitoringActive: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.monitoringActive"].Value)),
+        externalNoise: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.externalNoise"].Value)),
+        audioUnsupported: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.audioUnsupported"].Value)),
+        monitoringAudio: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.monitoringAudio"].Value)),
+        micFail: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.micFail"].Value)),
+        sessionActive: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.sessionActive"].Value)),
+        sessionConflict: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.sessionConflict"].Value)),
+        sessionFinished: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.sessionFinished"].Value)),
+        alreadySubmitted: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.alreadySubmitted"].Value)),
+        otherWindow: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.otherWindow"].Value)),
+        otherWindowMsg: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.otherWindowMsg"].Value)),
+        sessionNotRegistered: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.sessionNotRegistered"].Value)),
+        checkConnection: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.checkConnection"].Value)),
+        heartbeatStall: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.heartbeatStall"].Value)),
+        sessionMismatch: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.sessionMismatch"].Value)),
+        networkError: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.networkError"].Value)),
+        submitSuccess: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.submitSuccess"].Value)),
+        faceModelFail: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.faceModelFail"].Value)),
+        cameraActive: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.cameraActive"].Value)),
+        cameraStopped: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.cameraStopped"].Value)),
+        noFace: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.noFace"].Value)),
+        faceAbsent: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.faceAbsent"].Value)),
+        multipleFaces: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.multipleFaces"].Value)),
+        gazeAway: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.gazeAway"].Value)),
+        stressExpr: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.stressExpr"].Value)),
+        faceUnavailable: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.faceUnavailable"].Value)),
+        emotionHint: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.emotionHint"].Value)),
+        cameraUnsupported: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.cameraUnsupported"].Value)),
+        cameraUnsupportedDetail: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.cameraUnsupportedDetail"].Value)),
+        cameraDenied: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.cameraDenied"].Value)),
+        cameraDeniedDetail: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.cameraDeniedDetail"].Value)),
+        cameraRequired: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.cameraRequired"].Value)),
+        loadingAnalysis: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.loadingAnalysis"].Value)),
+        audioActive: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.audioActive"].Value)),
+        tabSwitch: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.tabSwitch"].Value)),
+        focusLoss: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.focusLoss"].Value)),
+        copyBlocked: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.copyBlocked"].Value)),
+        pasteBlocked: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.pasteBlocked"].Value)),
+        rightClickBlocked: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.rightClickBlocked"].Value)),
+        printBlocked: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.printBlocked"].Value)),
+        devtools: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.devtools"].Value)),
+        expr: {
+            angry: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.expr.angry"].Value)),
+            disgusted: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.expr.disgusted"].Value)),
+            fearful: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.expr.fearful"].Value)),
+            happy: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.expr.happy"].Value)),
+            neutral: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.expr.neutral"].Value)),
+            sad: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.expr.sad"].Value)),
+            surprised: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.mon.expr.surprised"].Value))
+        }
+    };
+</script>
+<script defer src="~/js/exam-calculator.js?v=@assetsVersion"></script>
+<script defer src="~/js/exam-monitor.js?v=@assetsVersion"></script>
+</body>
+</html>

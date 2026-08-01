@@ -1,0 +1,41 @@
+## .NET
+bin/
+obj/
+*.user
+*.dll
+*.exe
+*.pdb
+*.cache
+project.lock.json
+project.fragment.lock.json
+
+## IDE / OS
+.vs/
+.idea/
+*.user
+*.suo
+*.swp
+*~
+Thumbs.db
+Desktop.ini
+
+## App local data & logs
+/data/
+**/snapshots/
+*.db
+*.db-shm
+*.db-wal
+*.log
+run-out.log
+run-err.log
+
+## Secrets / local overrides
+appsettings.Development.json
+appsettings.Local.json
+**/secrets.json
+.env
+.env.*
+
+## Uploads / evidence
+wwwroot/uploads/
+**/snapshots/

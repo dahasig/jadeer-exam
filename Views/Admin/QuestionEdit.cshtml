@@ -1,0 +1,123 @@
+@{
+    ViewData["Title"] = Localizer["ops.q.edit.title"].Value;
+    ViewData["ActiveNav"] = "operations";
+    dynamic exam = ViewBag.Exam;
+    dynamic question = ViewBag.Question;
+    var isEssay = question.Essay == true;
+    var hasImage = question.HasImage == true;
+    var q = Context.Request.Query;
+    string Err() => q.ContainsKey("error") ? q["error"].ToString() : "";
+}
+<header class="page-topbar card">
+    <div>
+        <h1 class="page-title">@Localizer["ops.q.edit.title"]</h1>
+        <p class="page-subtitle muted">@exam.Title</p>
+    </div>
+    <div class="page-topbar-actions">
+        <a class="btn-outline"
+           asp-controller="Admin" asp-action="Operations"
+           asp-route-view="create" asp-route-tab="questions" asp-route-examId="@exam.Id"
+           asp-route-qtype="@(isEssay ? "essay" : "mcq")">@Localizer["ops.q.edit.back"]</a>
+        <a class="btn-outline" asp-controller="Admin" asp-action="ExamPreview" asp-route-id="@exam.Id">@Localizer["ops.q.preview"]</a>
+    </div>
+</header>
+<div class="page-content">
+    <section class="card panel">
+        @if (Err() == "duration") { <p class="form-error">@Localizer["ops.q.budget.error.duration"]</p> }
+        @if (Err() == "fields") { <p class="form-error">@Localizer["ops.wizard.error.fields"]</p> }
+        @if (Err() == "image_size") { <p class="form-error">@Localizer["ops.q.error.imageSize"]</p> }
+        @if (Err() == "image_type") { <p class="form-error">@Localizer["ops.q.error.imageType"]</p> }
+        @if (Err() == "image_save") { <p class="form-error">@Localizer["ops.q.error.imageSave"]</p> }
+
+        @if (hasImage)
+        {
+            <figure class="question-image-wrap">
+                <img class="question-image"
+                     src="~/admin/exams/@exam.Id/questions/@question.Id/image"
+                     alt="@Localizer["exam.question.image.alt"]"/>
+            </figure>
+        }
+
+        <form class="admin-form compact-admin-form"
+              asp-controller="Admin" asp-action="EditQuestion"
+              asp-route-examId="@exam.Id" asp-route-qid="@question.Id"
+              method="post" enctype="multipart/form-data">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="essayQuestion" value="@isEssay.ToString().ToLowerInvariant()">
+
+            <textarea name="text" rows="4" placeholder="@Localizer["ops.q.text"]" required>@question.Text</textarea>
+            <input type="text" name="topic" placeholder="@Localizer["ops.q.section"]" value="@question.Topic">
+
+            @if (!isEssay)
+            {
+                <div class="form-grid-2">
+                    <input type="text" name="optionA" placeholder="@Localizer["ops.q.optionA"]" required value="@question.OptionA">
+                    <input type="text" name="optionB" placeholder="@Localizer["ops.q.optionB"]" required value="@question.OptionB">
+                    <input type="text" name="optionC" placeholder="@Localizer["ops.q.optionC"]" value="@question.OptionC">
+                    <input type="text" name="optionD" placeholder="@Localizer["ops.q.optionD"]" value="@question.OptionD">
+                </div>
+                <input type="text" name="correctOption" placeholder="@Localizer["ops.q.correct"]" required value="@question.CorrectOption">
+            }
+
+            <div class="form-grid-2">
+                <input type="number" min="1" name="mark" placeholder="@Localizer["ops.q.mark"]" required value="@question.Mark">
+                <input type="number" min="10" name="durationSeconds" placeholder="@Localizer["ops.q.duration.seconds"]" required
+                       value="@question.DurationSeconds">
+            </div>
+
+            @if (isEssay)
+            {
+                <textarea name="rubric" rows="3" placeholder="@Localizer["ops.q.rubric"]" required>@question.Rubric</textarea>
+            }
+
+            <div class="question-image-field">
+                <p class="question-image-field-title">@Localizer["ops.q.image"]</p>
+                <p class="muted question-image-field-hint">@Localizer["ops.q.image.hint"]</p>
+                <label class="question-image-upload">
+                    <span class="question-image-upload-btn">@Localizer["ops.q.image.choose"]</span>
+                    <input type="file" name="image" accept="image/jpeg,image/png,image/webp,image/gif">
+                    <span class="question-image-upload-name muted" data-empty-label=""></span>
+                </label>
+                <figure class="question-image-preview hidden">
+                    <img class="question-image-preview-img" alt="" />
+                </figure>
+            </div>
+            @if (hasImage)
+            {
+                <label class="inline-check">
+                    <input type="checkbox" name="removeImage" value="true">
+                    <span>@Localizer["ops.q.image.remove"]</span>
+                </label>
+            }
+
+            <div class="btn-row">
+                <button class="btn-primary" type="submit">@Localizer["ops.q.edit.save"]</button>
+            </div>
+        </form>
+    </section>
+</div>
+@section Scripts {
+<script>
+document.querySelectorAll(".question-image-field").forEach((field) => {
+    const input = field.querySelector("input[type='file'][name='image']");
+    const nameEl = field.querySelector(".question-image-upload-name");
+    const previewWrap = field.querySelector(".question-image-preview");
+    const previewImg = field.querySelector(".question-image-preview-img");
+    if (!input) return;
+    input.addEventListener("change", () => {
+        const file = input.files?.[0];
+        if (!file) {
+            if (nameEl) nameEl.textContent = "";
+            previewWrap?.classList.add("hidden");
+            if (previewImg) previewImg.removeAttribute("src");
+            return;
+        }
+        if (nameEl) nameEl.textContent = file.name;
+        if (previewImg && previewWrap) {
+            previewImg.src = URL.createObjectURL(file);
+            previewWrap.classList.remove("hidden");
+        }
+    });
+});
+</script>
+}

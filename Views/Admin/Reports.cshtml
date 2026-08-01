@@ -1,0 +1,454 @@
+﻿@{
+    ViewData["Title"] = Localizer["reports.title"].Value;
+    ViewData["ActiveNav"] = "reports";
+    var defaultTab = ViewBag.DefaultTab as string ?? "summary";
+    var lifecycleFilter = ViewBag.LifecycleFilter as string ?? "";
+    var selectedExamId = ViewBag.SelectedExamId;
+    var filterFrom = ViewBag.FilterFrom as string;
+    var filterTo = ViewBag.FilterTo as string;
+    var allReportExams = ViewBag.AllReportExams as System.Collections.IEnumerable;
+    var reportOverview = ViewBag.ReportOverview as System.Collections.IDictionary;
+    var periodAnalytics = ViewBag.PeriodAnalytics as System.Collections.IDictionary;
+    var examResultRows = ViewBag.ExamResultRows as System.Collections.IEnumerable;
+    var events = ViewBag.Events as System.Collections.IEnumerable;
+    var riskSummaries = ViewBag.RiskSummaries as System.Collections.IEnumerable;
+    var criticalTodayCount = ViewBag.CriticalTodayCount ?? 0;
+    var pendingEssayCount = ViewBag.PendingEssayCount ?? 0;
+    var assetsVersion = ViewData["AssetsVersion"];
+}
+<div class="page-content">
+    <form class="card panel filter-bar reports-filter" method="get" asp-controller="Reports" asp-action="Reports">
+        <input type="hidden" name="tab" value="@defaultTab">
+        <label class="reports-filter-label">
+            <span class="muted">@Localizer["reports.filter.from"]</span>
+            <input type="datetime-local" name="from" value="@filterFrom">
+        </label>
+        <label class="reports-filter-label">
+            <span class="muted">@Localizer["reports.filter.to"]</span>
+            <input type="datetime-local" name="to" value="@filterTo">
+        </label>
+        <select name="lifecycle">
+            <option value="">@Localizer["reports.filter.lifecycle"]</option>
+            <option value="FINISHED" selected="@(lifecycleFilter == "FINISHED" ? "selected" : null)">@Localizer["reports.lifecycle.FINISHED"]</option>
+            <option value="IN_PROGRESS" selected="@(lifecycleFilter == "IN_PROGRESS" ? "selected" : null)">@Localizer["reports.lifecycle.IN_PROGRESS"]</option>
+            <option value="NOT_STARTED" selected="@(lifecycleFilter == "NOT_STARTED" ? "selected" : null)">@Localizer["reports.lifecycle.NOT_STARTED"]</option>
+        </select>
+        <select name="examId">
+            <option value="">@Localizer["reports.filter.exam"]</option>
+            @if (allReportExams != null)
+            {
+                foreach (dynamic e in allReportExams)
+                {
+                    <option value="@e.Id" selected="@(selectedExamId != null && Equals(selectedExamId, e.Id) ? "selected" : null)">@e.Title</option>
+                }
+            }
+        </select>
+        <button class="btn-primary" type="submit">@Localizer["reports.apply"]</button>
+    </form>
+
+    <div class="card ux-tabs-card">
+        <nav class="ux-tab-bar" role="tablist" aria-label="تبويبات التقارير">
+            <a class="ux-tab@(defaultTab == "summary" ? " is-active" : "")"
+               asp-controller="Reports" asp-action="Reports"
+               asp-route-tab="summary" asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+               asp-route-from="@filterFrom" asp-route-to="@filterTo"
+               role="tab">@Localizer["reports.tab.summary"]</a>
+            <a class="ux-tab@(defaultTab == "stats" ? " is-active" : "")"
+               asp-controller="Reports" asp-action="Reports"
+               asp-route-tab="stats" asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+               asp-route-from="@filterFrom" asp-route-to="@filterTo"
+               role="tab">@Localizer["reports.tab.stats"]</a>
+            <a class="ux-tab@(defaultTab == "results" ? " is-active" : "")"
+               asp-controller="Reports" asp-action="Reports"
+               asp-route-tab="results" asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+               asp-route-from="@filterFrom" asp-route-to="@filterTo"
+               role="tab">@Localizer["reports.tab.results"]</a>
+            <a class="ux-tab@(defaultTab == "events" ? " is-active" : "")"
+               asp-controller="Reports" asp-action="Reports"
+               asp-route-tab="events" asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+               asp-route-from="@filterFrom" asp-route-to="@filterTo"
+               role="tab">@Localizer["reports.tab.alerts"]</a>
+        </nav>
+
+        <div class="ux-tab-panel@(defaultTab == "summary" ? " is-active" : "")" data-tab-panel="summary" role="tabpanel" hidden="@(defaultTab != "summary")">
+            <section class="kpi-grid" style="margin-bottom:14px">
+                <a class="stat-card card kpi-clickable"
+                   asp-controller="Reports" asp-action="Reports"
+                   asp-route-tab="summary" asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+                   asp-route-from="@filterFrom" asp-route-to="@filterTo">
+                    <h3>@Localizer["reports.candidates"]</h3>
+                    <strong>@(ViewMap.Get(reportOverview, "totalCandidates") ?? 0)</strong>
+                </a>
+                <a class="stat-card card kpi-clickable"
+                   asp-controller="Reports" asp-action="Reports"
+                   asp-route-tab="results" asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+                   asp-route-from="@filterFrom" asp-route-to="@filterTo">
+                    <h3>@Localizer["reports.completed"]</h3>
+                    <strong>@(ViewMap.Get(reportOverview, "completedCount") ?? 0)</strong>
+                </a>
+                <a class="stat-card card kpi-clickable"
+                   asp-controller="Reports" asp-action="Reports"
+                   asp-route-tab="results" asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+                   asp-route-from="@filterFrom" asp-route-to="@filterTo">
+                    <h3>@Localizer["reports.notCompleted"]</h3>
+                    <strong>@(ViewMap.Get(reportOverview, "notCompletedCount") ?? 0)</strong>
+                </a>
+                <a class="stat-card card kpi-clickable"
+                   asp-controller="Reports" asp-action="Reports"
+                   asp-route-tab="events" asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+                   asp-route-from="@filterFrom" asp-route-to="@filterTo">
+                    <h3>@Localizer["reports.critical"]</h3>
+                    <strong>@criticalTodayCount</strong>
+                </a>
+                <div class="stat-card card">
+                    <h3>@Localizer["reports.pendingEssays"]</h3>
+                    <strong>@pendingEssayCount</strong>
+                </div>
+            </section>
+
+            @if (ViewMap.Get(reportOverview, "candidateRows") != null)
+            {
+                <section class="card panel">
+                    <h3>@Localizer["reports.candidateList"]</h3>
+                    <div class="table-shell">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>@Localizer["reports.col.candidate"]</th>
+                                <th>@Localizer["reports.col.exam"]</th>
+                                <th>@Localizer["reports.col.status"]</th>
+                                <th>@Localizer["reports.col.action"]</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (dynamic c in (System.Collections.IEnumerable)ViewMap.Get(reportOverview, "candidateRows")!)
+                            {
+                                <tr>
+                                    <td>@Txt.V(ViewMap.Get(c, "username"))</td>
+                                    <td>@Txt.V(ViewMap.Get(c, "examTitle"))</td>
+                                    <td>
+                                        @if (ViewMap.Bool(c, "submitted"))
+                                        {
+                                            <span>@Localizer["reports.candidate.status.done"]</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@Localizer["reports.candidate.status.pending"]</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (ViewMap.Get(c, "attemptId") != null)
+                                        {
+                                            <form asp-controller="Admin" asp-action="DeleteAttempt" asp-route-id="@ViewMap.Get(c, "attemptId")" method="post"
+                                                  data-confirm-msg="@Localizer["reports.deleteAttempt.confirm"]"
+                                                  onsubmit="return confirm(this.dataset.confirmMsg);">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="examId" value="@ViewMap.Get(c, "examId")">
+                                                <button class="btn-outline" type="submit">@Localizer["reports.deleteAttempt"]</button>
+                                            </form>
+                                        }
+                                        else
+                                        {
+                                            <span>—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            }
+
+            @if ((User.IsInRole("ADMIN") || User.IsInRole("EXAMINER")) && riskSummaries != null && riskSummaries.Cast<object>().Any())
+            {
+                <section class="card panel risk-panel">
+                    <h3>@Localizer["reports.risk"]</h3>
+                    <div class="table-shell">
+                        <table class="data-table">
+                            <thead>
+                            <tr>
+                                <th>@Localizer["reports.col.candidate"]</th>
+                                <th>@Localizer["reports.col.exam"]</th>
+                                <th>@Localizer["reports.col.score"]</th>
+                                <th>@Localizer["reports.col.cases"]</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (object row in riskSummaries)
+                            {
+                                var examTitle = ViewMap.Get(row, "examTitle")?.ToString();
+                                <tr>
+                                    <td>@ViewMap.Str(row, "username")</td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(examTitle))
+                                        {
+                                            <span>@examTitle</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@Localizer["reports.general"]</span>
+                                        }
+                                    </td>
+                                    <td><span class="score-chip @Txt.ScoreCssClass(ViewMap.Get(row, "score"), 70)">@ViewMap.Get(row, "score")</span></td>
+                                    <td>@ViewMap.Get(row, "eventCount")</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            }
+        </div>
+
+        <div class="ux-tab-panel@(defaultTab == "stats" ? " is-active" : "")" data-tab-panel="stats" role="tabpanel" hidden="@(defaultTab != "stats")">
+            <div class="reports-stats-head export-btn-group">
+                <a class="btn-outline"
+                   asp-controller="Reports" asp-action="ExportAnalyticsCsv"
+                   asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+                   asp-route-from="@filterFrom" asp-route-to="@filterTo">@Localizer["reports.stats.export.csv"]</a>
+                <a class="btn-outline"
+                   asp-controller="Reports" asp-action="ExportAnalyticsExcel"
+                   asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+                   asp-route-from="@filterFrom" asp-route-to="@filterTo">@Localizer["reports.stats.export.xlsx"]</a>
+                <a class="btn-outline"
+                   asp-controller="Reports" asp-action="ExportAnalyticsPdf"
+                   asp-route-lifecycle="@lifecycleFilter" asp-route-examId="@selectedExamId"
+                   asp-route-from="@filterFrom" asp-route-to="@filterTo">@Localizer["reports.stats.export.pdf"]</a>
+            </div>
+
+            @if (periodAnalytics != null)
+            {
+                <section class="kpi-grid" style="margin-bottom:14px">
+                    <div class="stat-card card"><h3>@Localizer["reports.stats.examsConducted"]</h3><strong>@(ViewMap.Get(periodAnalytics, "examsConducted") ?? 0)</strong></div>
+                    <div class="stat-card card"><h3>@Localizer["reports.stats.examsCreated"]</h3><strong>@(ViewMap.Get(periodAnalytics, "examsCreated") ?? 0)</strong></div>
+                    <div class="stat-card card"><h3>@Localizer["reports.stats.departments"]</h3><strong>@(ViewMap.Get(periodAnalytics, "departmentsBenefited") ?? 0)</strong></div>
+                    <div class="stat-card card"><h3>@Localizer["reports.stats.uniqueCandidates"]</h3><strong>@(ViewMap.Get(periodAnalytics, "uniqueCandidates") ?? 0)</strong></div>
+                    <div class="stat-card card"><h3>@Localizer["reports.stats.totalAssignments"]</h3><strong>@(ViewMap.Get(periodAnalytics, "totalAssignments") ?? 0)</strong></div>
+                    <div class="stat-card card"><h3>@Localizer["reports.stats.completed"]</h3><strong>@(ViewMap.Get(periodAnalytics, "completedAttempts") ?? 0)</strong></div>
+                    <div class="stat-card card"><h3>@Localizer["reports.stats.passRate"]</h3><strong>@(ViewMap.Get(periodAnalytics, "passRate") != null ? ViewMap.Get(periodAnalytics, "passRate") + "%" : "—")</strong></div>
+                    <div class="stat-card card"><h3>@Localizer["reports.stats.averageScore"]</h3><strong>@(ViewMap.Get(periodAnalytics, "averageScore") ?? "—")</strong></div>
+                    <div class="stat-card card"><h3>@Localizer["reports.stats.passed"]</h3><strong>@(ViewMap.Get(periodAnalytics, "passCount") ?? 0)</strong></div>
+                    <div class="stat-card card"><h3>@Localizer["reports.stats.failed"]</h3><strong>@(ViewMap.Get(periodAnalytics, "failCount") ?? 0)</strong></div>
+                </section>
+
+                @if (ViewMap.Get(periodAnalytics, "departmentRows") != null)
+                {
+                    var deptRows = ((System.Collections.IEnumerable)ViewMap.Get(periodAnalytics, "departmentRows")!).Cast<object>().ToList();
+                    <section class="card panel">
+                        <h3>@Localizer["reports.stats.byDepartment"]</h3>
+                        <div class="table-shell">
+                            <table class="data-table">
+                                <thead>
+                                <tr>
+                                    <th>@Localizer["ops.department"]</th>
+                                    <th>@Localizer["reports.stats.examsCount"]</th>
+                                    <th>@Localizer["reports.stats.assigned"]</th>
+                                    <th>@Localizer["reports.stats.completed"]</th>
+                                    <th>@Localizer["reports.stats.passRate"]</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @foreach (dynamic row in deptRows)
+                                {
+                                    <tr>
+                                        <td>@ViewMap.Get(row, "departmentName")</td>
+                                        <td>@ViewMap.Get(row, "examCount")</td>
+                                        <td>@ViewMap.Get(row, "assignedCandidates")</td>
+                                        <td>@ViewMap.Get(row, "completedAttempts")</td>
+                                        <td>@(ViewMap.Get(row, "passRate") != null ? ViewMap.Get(row, "passRate") + "%" : "—")</td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (deptRows.Count == 0)
+                        {
+                            <p class="empty-state">@Localizer["reports.stats.empty"]</p>
+                        }
+                    </section>
+                }
+
+                @if (ViewMap.Get(periodAnalytics, "examRows") != null)
+                {
+                    var examRows = ((System.Collections.IEnumerable)ViewMap.Get(periodAnalytics, "examRows")!).Cast<object>().ToList();
+                    <section class="card panel" style="margin-top:14px">
+                        <h3>@Localizer["reports.stats.byExam"]</h3>
+                        <div class="table-shell">
+                            <table class="data-table">
+                                <thead>
+                                <tr>
+                                    <th>@Localizer["reports.col.examName"]</th>
+                                    <th>@Localizer["ops.department"]</th>
+                                    <th>@Localizer["reports.stats.assigned"]</th>
+                                    <th>@Localizer["reports.stats.completed"]</th>
+                                    <th>@Localizer["reports.stats.passRate"]</th>
+                                    <th>@Localizer["reports.stats.averageScore"]</th>
+                                    <th>@Localizer["reports.col.action"]</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @foreach (dynamic row in examRows)
+                                {
+                                    <tr>
+                                        <td>@ViewMap.Get(row, "examTitle")</td>
+                                        <td>@ViewMap.Get(row, "departmentName")</td>
+                                        <td>@ViewMap.Get(row, "assignedCandidates")</td>
+                                        <td>@ViewMap.Get(row, "completedAttempts")</td>
+                                        <td>@(ViewMap.Get(row, "passRate") != null ? ViewMap.Get(row, "passRate") + "%" : "—")</td>
+                                        <td>@(ViewMap.Get(row, "averageScore") ?? "—")</td>
+                                        <td>
+                                            <a class="btn-outline" asp-controller="Reports" asp-action="ExamReport" asp-route-id="@ViewMap.Get(row, "examId")">@Localizer["ops.report"]</a>
+                                        </td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (examRows.Count == 0)
+                        {
+                            <p class="empty-state">@Localizer["reports.stats.empty"]</p>
+                        }
+                    </section>
+                }
+            }
+        </div>
+
+        <div class="ux-tab-panel@(defaultTab == "results" ? " is-active" : "")" data-tab-panel="results" role="tabpanel" hidden="@(defaultTab != "results")">
+            <div class="table-shell">
+                <table class="data-table">
+                    <thead>
+                    <tr>
+                        <th>@Localizer["reports.col.examiner"]</th>
+                        <th>@Localizer["reports.col.examName"]</th>
+                        <th>@Localizer["reports.col.score"]</th>
+                        <th>@Localizer["reports.col.data"]</th>
+                        <th>@Localizer["reports.col.alerts"]</th>
+                        <th>@Localizer["reports.col.action"]</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @if (examResultRows != null)
+                    {
+                        foreach (dynamic row in examResultRows)
+                        {
+                            var submittedAt = ViewMap.Get(row, "submittedAt");
+                            var submittedStr = submittedAt != null ? ((DateTime)submittedAt).ToString("yyyy-MM-dd HH:mm") : "—";
+                            <tr>
+                                <td>@Txt.V(ViewMap.Get(row, "username"))</td>
+                                <td>
+                                    @if (ViewMap.Get(row, "examId") != null)
+                                    {
+                                        <a asp-controller="Reports" asp-action="ExamReport" asp-route-id="@ViewMap.Get(row, "examId")">@Txt.V(ViewMap.Get(row, "examTitle"))</a>
+                                    }
+                                    else
+                                    {
+                                        <span>@Txt.V(ViewMap.Get(row, "examTitle"))</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="score-chip @Txt.ScoreCssClass(ViewMap.Get(row, "score"), ViewMap.Get(row, "passThreshold"))">@(ViewMap.Get(row, "score") ?? "—")</span>
+                                </td>
+                                <td>@Txt.Line(ViewMap.Get(row, "status"), submittedStr)</td>
+                                <td>@Txt.V(ViewMap.Get(row, "notes"))</td>
+                                <td>
+                                    @if (ViewMap.Get(row, "attemptId") != null)
+                                    {
+                                        <a class="btn-outline" asp-controller="Reports" asp-action="AttemptTimeline" asp-route-id="@ViewMap.Get(row, "attemptId")">@Localizer["reports.timeline"]</a>
+                                        <form asp-controller="Admin" asp-action="DeleteAttempt" asp-route-id="@ViewMap.Get(row, "attemptId")" method="post"
+                                              data-confirm-msg="@Localizer["reports.deleteAttempt.confirm"]"
+                                              onsubmit="return confirm(this.dataset.confirmMsg);"
+                                              style="display:inline-block;margin-inline-start:6px">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="examId" value="@ViewMap.Get(row, "examId")">
+                                            <button class="btn-danger" type="submit">@Localizer["reports.deleteAttempt"]</button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <span class="muted">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="ux-tab-panel@(defaultTab == "events" ? " is-active" : "")" data-tab-panel="events" role="tabpanel" hidden="@(defaultTab != "events")">
+            @{
+                var eventList = events?.Cast<object>().ToList() ?? new List<object>();
+            }
+            @if (eventList.Count == 0)
+            {
+                <div class="empty-state">@Localizer["reports.noAlerts"]</div>
+            }
+            @foreach (dynamic ev in eventList)
+            {
+                var eventTime = ViewMap.Get(ev, "eventTime");
+                var timeStr = eventTime != null ? ((DateTime)eventTime).ToString("yyyy-MM-dd HH:mm:ss") : "—";
+                var capturedAt = eventTime != null ? ((DateTime)eventTime).ToString("yyyy-MM-dd HH:mm:ss") : "";
+                <div class="snapshot-gallery-row">
+                    @if (ViewMap.Get(ev, "snapshotFileName") != null && ViewMap.Get(ev, "examId") != null)
+                    {
+                        <div class="snapshot-gallery-media">
+                            <a class="snapshot-open-link"
+                               asp-controller="Reports" asp-action="MediaView"
+                               asp-route-examId="@ViewMap.Get(ev, "examId")"
+                               asp-route-fileName="@ViewMap.Get(ev, "snapshotFileName")"
+                               asp-route-username="@ViewMap.Get(ev, "username")"
+                               asp-route-capturedAt="@capturedAt"
+                               target="_blank" rel="noopener">
+                                <img src="~/admin/reports/exam/@ViewMap.Get(ev, "examId")/snapshots/@ViewMap.Get(ev, "snapshotFileName")"
+                                     alt="@Localizer["reports.snapshot.alt"]"/>
+                            </a>
+                            <a class="btn-outline snapshot-open-btn"
+                               asp-controller="Reports" asp-action="MediaView"
+                               asp-route-examId="@ViewMap.Get(ev, "examId")"
+                               asp-route-fileName="@ViewMap.Get(ev, "snapshotFileName")"
+                               asp-route-username="@ViewMap.Get(ev, "username")"
+                               asp-route-capturedAt="@capturedAt"
+                               target="_blank" rel="noopener">@Localizer["reports.openSnapshot"]</a>
+                        </div>
+                    }
+                    @if (ViewMap.Get(ev, "videoFileName") != null && ViewMap.Get(ev, "examId") != null)
+                    {
+                        <div class="snapshot-gallery-media">
+                            <div class="stamped-media">
+                                <video controls playsinline preload="metadata"
+                                       src="~/admin/reports/exam/@ViewMap.Get(ev, "examId")/snapshots/@ViewMap.Get(ev, "videoFileName")"></video>
+                                <div class="stamped-media-overlay">
+                                    <span class="stamped-media-name">@Txt.V(ViewMap.Get(ev, "username"))</span>
+                                    <span class="stamped-media-time">@timeStr</span>
+                                </div>
+                            </div>
+                            <a class="btn-outline snapshot-open-btn"
+                               asp-controller="Reports" asp-action="MediaView"
+                               asp-route-examId="@ViewMap.Get(ev, "examId")"
+                               asp-route-fileName="@ViewMap.Get(ev, "videoFileName")"
+                               asp-route-username="@ViewMap.Get(ev, "username")"
+                               asp-route-capturedAt="@capturedAt"
+                               target="_blank" rel="noopener">@Localizer["reports.openVideo"]</a>
+                        </div>
+                    }
+                    <div class="snapshot-gallery-side">
+                        <p><strong>@Txt.V(ViewMap.Get(ev, "username"))</strong></p>
+                        <p class="muted">@Txt.V(ViewMap.Get(ev, "details"))</p>
+                        <p class="event-time">@timeStr</p>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+@section Scripts {
+<script>
+    window.__RC_REPORTS = {
+        heatmapTitle: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["reports.heatmap.title"].Value)),
+        heatmapCell: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["reports.heatmap.cell"].Value))
+    };
+</script>
+<script defer src="~/js/monitoring-insights.js?v=@assetsVersion"></script>
+}

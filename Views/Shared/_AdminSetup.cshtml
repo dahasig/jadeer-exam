@@ -1,0 +1,281 @@
+@{
+    var usersView = ViewBag.UsersView as string ?? "add";
+    var departments = ViewBag.Departments as System.Collections.IEnumerable;
+    var examiners = ViewBag.Examiners as System.Collections.IEnumerable;
+    var currentUsername = ViewBag.CurrentUsername as string;
+    var firstExaminerIdByDept = ViewBag.FirstExaminerIdByDept as System.Collections.IDictionary;
+    var examinerCountByDept = ViewBag.ExaminerCountByDept as System.Collections.IDictionary;
+    var q = Context.Request.Query;
+    string Q(string key) => q.ContainsKey(key) ? q[key].ToString() : "";
+    bool Has(string key) => q.ContainsKey(key);
+}
+@if (Q("msg") == "dept_in_use")
+{
+    <p class="admin-hint">@Localizer["admin.dept.inUse"]</p>
+}
+@if (Has("examiner_added"))
+{
+    <p class="form-success">@Localizer["admin.examiner.added.success"]</p>
+}
+@if (Has("examiner_linked"))
+{
+    <p class="form-success">@Localizer["admin.examiner.linked.success"]</p>
+}
+@if (Has("staff_added"))
+{
+    <p class="form-success">@Localizer["admin.staff.added.success"]</p>
+}
+@if (Has("grader_added"))
+{
+    <p class="form-success">@Localizer["admin.grader.added.success"]</p>
+}
+@if (Q("error") == "grader_email_taken")
+{
+    <p class="form-error">@Localizer["admin.grader.error.email"]</p>
+}
+@if (Q("error") == "grader_national_id")
+{
+    <p class="form-error">@Localizer["admin.grader.error.nationalId"]</p>
+}
+@if (Q("error") == "grader_invalid")
+{
+    <p class="form-error">@Localizer["admin.grader.error.invalid"]</p>
+}
+@if (Q("error") == "examiner_email_taken")
+{
+    <p class="form-error">@Localizer["admin.examiner.error.email"]</p>
+}
+@if (Q("error") == "examiner_national_id")
+{
+    <p class="form-error">@Localizer["admin.examiner.error.nationalId"]</p>
+}
+@if (Q("error") == "examiner_invalid")
+{
+    <p class="form-error">@Localizer["admin.examiner.error.invalid"]</p>
+}
+@if (Q("error") == "link_invalid")
+{
+    <p class="form-error">@Localizer["admin.examiner.error.link"]</p>
+}
+
+<nav class="ops-view-tabs ux-tab-bar card" role="tablist" aria-label="@Localizer["admin.users.title"]">
+    <a class="ux-tab@(usersView == "add" ? " is-active" : "")"
+       asp-controller="Admin" asp-action="Users" asp-route-view="add" role="tab">@Localizer["admin.users.tab.add"]</a>
+    <a class="ux-tab@(usersView == "browse" ? " is-active" : "")"
+       asp-controller="Admin" asp-action="Users" asp-route-view="browse" role="tab">@Localizer["admin.users.tab.browse"]</a>
+</nav>
+
+@if (usersView == "add")
+{
+    <section class="admin-block card">
+        <h2 class="panel-heading">@Localizer["admin.dept.block"]</h2>
+        <form class="admin-form form-grid-2" asp-controller="Admin" asp-action="CreateDepartment" method="post">
+            @Html.AntiForgeryToken()
+            <input type="text" name="name" placeholder="@(Localizer["admin.dept.name"].Value + " *")" required>
+            <input type="text" name="city" placeholder="@Localizer["admin.dept.city"]">
+            <input type="text" name="sector" placeholder="@Localizer["admin.dept.sector"]">
+            <button class="btn-primary" type="submit" style="grid-column:1/-1">@Localizer["admin.dept.addBtn"]</button>
+        </form>
+    </section>
+
+    <section class="admin-block card">
+        <h2 class="panel-heading">@Localizer["admin.examiner.block"]</h2>
+        <form class="admin-form form-grid-2" asp-controller="Admin" asp-action="CreateUser" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="role" value="EXAMINER">
+            <input type="text" name="fullName" placeholder="@Localizer["admin.examiner.fullName"]" required>
+            <input type="email" name="email" placeholder="@Localizer["admin.examiner.email"]" required>
+            <input type="text" name="nationalId" placeholder="@Localizer["admin.examiner.nationalId"]" required>
+            <select name="departmentId">
+                <option value="">@Localizer["admin.examiner.dept.optional"]</option>
+                @if (departments != null)
+                {
+                    foreach (dynamic d in departments)
+                    {
+                        <option value="@d.Id">@d.Name</option>
+                    }
+                }
+            </select>
+            <button class="btn-primary" type="submit" style="grid-column:1/-1">@Localizer["admin.examiner.addBtn"]</button>
+        </form>
+    </section>
+
+    <section class="admin-block card">
+        <h2 class="panel-heading">@Localizer["admin.examiner.link"]</h2>
+        <form class="admin-form form-grid-2" asp-controller="Admin" asp-action="AssignExaminer" method="post">
+            @Html.AntiForgeryToken()
+            <select name="departmentId" required>
+                <option value="">@Localizer["admin.examiner.selectDept"]</option>
+                @if (departments != null)
+                {
+                    foreach (dynamic d in departments)
+                    {
+                        <option value="@d.Id">@d.Name</option>
+                    }
+                }
+            </select>
+            <select name="examinerUserId" required>
+                <option value="">@Localizer["admin.examiner.selectExaminer"]</option>
+                @if (examiners != null)
+                {
+                    var unassigned = Localizer["admin.examiner.unassigned"].Value;
+                    foreach (dynamic e in examiners)
+                    {
+                        var label = e.Department != null
+                            ? Txt.Person((string)e.FullName, (string)e.Email) + " — " + e.Department.Name
+                            : Txt.Person((string)e.FullName, (string)e.Email) + " — " + unassigned;
+                        <option value="@e.Id">@label</option>
+                    }
+                }
+            </select>
+            <button class="btn-primary" type="submit" style="grid-column:1/-1">@Localizer["admin.examiner.linkBtn"]</button>
+        </form>
+    </section>
+
+    <section class="admin-block card">
+        <h2 class="panel-heading">@Localizer["admin.grader.block"]</h2>
+        <form class="admin-form form-grid-2" asp-controller="Admin" asp-action="CreateUser" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="role" value="GRADER">
+            <input type="text" name="fullName" placeholder="@Localizer["admin.examiner.fullName"]" required>
+            <input type="email" name="email" placeholder="@Localizer["admin.examiner.email"]" required>
+            <input type="text" name="nationalId" placeholder="@Localizer["admin.examiner.nationalId"]" required style="grid-column:1/-1">
+            <button class="btn-primary" type="submit" style="grid-column:1/-1">@Localizer["admin.grader.addBtn"]</button>
+        </form>
+    </section>
+}
+
+@if (usersView == "browse")
+{
+    <section class="admin-block card">
+        <h2 class="panel-heading">@Localizer["admin.users.browse.title"]</h2>
+        @{
+            var hasDepts = departments != null && departments.Cast<object>().Any();
+            var hasExaminers = examiners != null && examiners.Cast<object>().Any();
+        }
+        @if (hasDepts || hasExaminers)
+        {
+            <div class="table-shell">
+                <table class="data-table">
+                    <thead>
+                    <tr>
+                        <th>@Localizer["admin.dept.col.name"]</th>
+                        <th>@Localizer["admin.dept.col.city"]</th>
+                        <th>@Localizer["admin.dept.col.sector"]</th>
+                        <th>@Localizer["admin.examiner.col.name"]</th>
+                        <th>@Localizer["admin.examiner.col.email"]</th>
+                        <th>@Localizer["admin.examiner.col.actions"]</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @if (departments != null)
+                    {
+                        foreach (dynamic d in departments)
+                        {
+                            var deptId = (object)d.Id;
+                            var matched = false;
+                            if (examiners != null)
+                            {
+                                foreach (dynamic e in examiners)
+                                {
+                                    if (e.Department != null && Equals(e.Department.Id, deptId))
+                                    {
+                                        matched = true;
+                                        <tr>
+                                            <td>@d.Name</td>
+                                            <td>@Txt.V(d.City)</td>
+                                            <td>@Txt.V(d.Sector)</td>
+                                            <td>@Txt.V(e.FullName)</td>
+                                            <td>@Txt.V(e.Email)</td>
+                                            <td>
+                                                <div class="table-actions">
+                                                    <form asp-controller="Admin" asp-action="UnassignExaminerDepartment" asp-route-id="@e.Id" method="post">
+                                                        @Html.AntiForgeryToken()
+                                                        <button class="btn-outline" type="submit">@Localizer["admin.examiner.unassign"]</button>
+                                                    </form>
+                                                    @if (currentUsername != (string)e.Username)
+                                                    {
+                                                        <form asp-controller="Admin" asp-action="DeleteUser" asp-route-id="@e.Id" method="post"
+                                                              data-confirm-msg="@Localizer["admin.examiner.delete.confirm"]"
+                                                              onsubmit="return confirm(this.dataset.confirmMsg);">
+                                                            @Html.AntiForgeryToken()
+                                                            <button class="btn-danger" type="submit">@Localizer["admin.examiner.delete"]</button>
+                                                        </form>
+                                                    }
+                                                    @if (firstExaminerIdByDept != null && Equals(firstExaminerIdByDept[deptId], e.Id))
+                                                    {
+                                                        <form asp-controller="Admin" asp-action="DeleteDepartment" asp-route-id="@d.Id" method="post"
+                                                              data-confirm-msg="@Localizer["admin.dept.delete.confirm"]"
+                                                              onsubmit="return confirm(this.dataset.confirmMsg);">
+                                                            @Html.AntiForgeryToken()
+                                                            <button class="btn-danger" type="submit">@Localizer["admin.dept.delete"]</button>
+                                                        </form>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            }
+                            var count = examinerCountByDept != null && examinerCountByDept.Contains(deptId)
+                                ? Convert.ToInt32(examinerCountByDept[deptId])
+                                : (matched ? 1 : 0);
+                            if (count == 0)
+                            {
+                                <tr>
+                                    <td>@d.Name</td>
+                                    <td>@Txt.V(d.City)</td>
+                                    <td>@Txt.V(d.Sector)</td>
+                                    <td>@Localizer["admin.examiner.none"]</td>
+                                    <td>—</td>
+                                    <td>
+                                        <form asp-controller="Admin" asp-action="DeleteDepartment" asp-route-id="@d.Id" method="post"
+                                              data-confirm-msg="@Localizer["admin.dept.delete.confirm"]"
+                                              onsubmit="return confirm(this.dataset.confirmMsg);">
+                                            @Html.AntiForgeryToken()
+                                            <button class="btn-danger" type="submit">@Localizer["admin.dept.delete"]</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    }
+                    @if (examiners != null)
+                    {
+                        foreach (dynamic e in examiners)
+                        {
+                            if (e.Department == null)
+                            {
+                                <tr>
+                                    <td>@Localizer["admin.examiner.unassigned"]</td>
+                                    <td>—</td>
+                                    <td>—</td>
+                                    <td>@Txt.V(e.FullName)</td>
+                                    <td>@Txt.V(e.Email)</td>
+                                    <td>
+                                        <div class="table-actions">
+                                            @if (currentUsername != (string)e.Username)
+                                            {
+                                                <form asp-controller="Admin" asp-action="DeleteUser" asp-route-id="@e.Id" method="post"
+                                                      data-confirm-msg="@Localizer["admin.examiner.delete.confirm"]"
+                                                      onsubmit="return confirm(this.dataset.confirmMsg);">
+                                                    @Html.AntiForgeryToken()
+                                                    <button class="btn-danger" type="submit">@Localizer["admin.examiner.delete"]</button>
+                                                </form>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (!hasDepts && !hasExaminers)
+        {
+            <p class="empty-state">@Localizer["admin.users.browse.empty"]</p>
+        }
+    </section>
+}

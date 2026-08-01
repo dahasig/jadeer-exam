@@ -1,0 +1,68 @@
+@{
+    Layout = "_Layout";
+    ViewData["Title"] = Localizer["precheck.title"].Value;
+    ViewData["ActiveNav"] = "dashboard";
+    ViewData["BodyClass"] = "app-body";
+    dynamic exam = ViewBag.Exam;
+    var pageLang = ViewData["PageLang"] as string ?? "ar";
+    ViewData["DataExamId"] = exam.Id;
+    var assetsVersion = ViewData["AssetsVersion"] ?? "3";
+}
+<header class="page-topbar card">
+    <div>
+        <h1 class="page-title">@exam.Title</h1>
+        <p class="page-subtitle muted">@ViewBag.WelcomeLine</p>
+    </div>
+</header>
+<div class="page-content">
+    <section class="card panel">
+        <div class="instructions-box">@ViewBag.InstructionsText</div>
+        <form class="admin-form precheck-form" asp-controller="Exam" asp-action="Precheck" asp-route-id="@exam.Id" method="post" enctype="multipart/form-data">
+            @Html.AntiForgeryToken()
+            <input type="text" name="ackName" value="@ViewBag.PrefillName" placeholder="@Localizer["precheck.name"]" required>
+            <p class="precheck-camera-hint">@Localizer["precheck.camera.hint"]</p>
+            <div class="precheck-video-wrap">
+                <video id="precheckVideo" playsinline autoplay muted></video>
+                <canvas id="precheckCanvas" hidden></canvas>
+                <p id="faceGuideText" class="muted"></p>
+                <div class="precheck-capture-actions">
+                    <button class="btn-outline" type="button" id="enablePrecheckCameraBtn">@Localizer["exam.camera.allow"]</button>
+                    <button class="btn-outline" type="button" id="captureFaceBtn" disabled>@Localizer["precheck.face"]</button>
+                    <button class="btn-outline" type="button" id="captureIdBtn" disabled>@Localizer["precheck.id"]</button>
+                </div>
+                <p id="captureStatusText" class="precheck-status muted"></p>
+                <p id="captureErrorText" class="precheck-error hidden" role="alert"></p>
+            </div>
+            <input type="hidden" name="faceImageBase64" id="faceImageBase64" required>
+            <input type="hidden" name="idCardImageBase64" id="idCardImageBase64" required>
+            <label class="inline-check">
+                <input type="checkbox" name="agree" required>
+                <span>@Localizer["precheck.agree"]</span>
+            </label>
+            <button class="btn-primary" type="submit" id="submitPrecheckBtn" disabled>@Localizer["precheck.submit"]</button>
+        </form>
+    </section>
+</div>
+@section Scripts {
+<script defer src="https://cdn.jsdelivr.net/npm/@@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script>
+    window.__RC_PRECHECK = {
+        cameraReady: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.status.cameraReady"].Value)),
+        faceManual: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.status.faceManual"].Value)),
+        modelFail: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.status.modelFail"].Value)),
+        modelFailError: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.error.modelFail"].Value)),
+        faceCenter: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.status.faceCenter"].Value)),
+        faceAligned: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.status.faceAligned"].Value)),
+        faceNotAligned: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.status.faceNotAligned"].Value)),
+        faceUnclear: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.error.faceUnclear"].Value)),
+        faceSaved: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.status.faceSaved"].Value)),
+        idPrompt: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.status.idPrompt"].Value)),
+        idUnclear: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.error.idUnclear"].Value)),
+        idSaved: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.status.idSaved"].Value)),
+        cameraFail: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.status.cameraFail"].Value)),
+        cameraFailError: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.error.cameraFail"].Value))
+    };
+</script>
+<script defer src="~/js/precheck-capture.js?v=@assetsVersion"></script>
+}

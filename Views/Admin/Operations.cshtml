@@ -1,0 +1,505 @@
+﻿@{
+    ViewData["Title"] = Localizer["ops.title"].Value;
+    ViewData["ActiveNav"] = "operations";
+    var opsView = ViewBag.OpsView as string ?? "list";
+    var defaultTab = ViewBag.DefaultTab as string ?? "exam";
+    var questionTypeTab = ViewBag.QuestionTypeTab as string ?? "mcq";
+    var isAdmin = ViewBag.IsAdmin as bool? == true;
+    var mailEnabled = ViewBag.MailEnabled as bool? == true;
+    var lifecycleFilter = ViewBag.LifecycleFilter as string ?? "";
+    var selectedExamId = ViewBag.SelectedExamId;
+    var effectiveExamId = ViewBag.EffectiveExamId;
+    var wizardHasExam = ViewBag.WizardHasExam as bool? == true;
+    var examSummaries = ViewBag.ExamSummaries as System.Collections.IEnumerable;
+    var exams = ViewBag.Exams as System.Collections.IEnumerable;
+    var departments = ViewBag.Departments as System.Collections.IEnumerable;
+    var examiners = ViewBag.Examiners as System.Collections.IEnumerable;
+    var graders = ViewBag.Graders as System.Collections.IEnumerable;
+    var candidates = ViewBag.Candidates as System.Collections.IEnumerable;
+    var examQuestions = ViewBag.ExamQuestions as System.Collections.IEnumerable;
+    var examBudgets = ViewBag.ExamBudgets as System.Collections.IDictionary;
+    var candidateManageRows = ViewBag.CandidateManageRows as System.Collections.IEnumerable;
+    dynamic setupExam = ViewBag.SetupExam;
+    var assetsVersion = ViewData["AssetsVersion"];
+    var q = Context.Request.Query;
+    string Q(string key) => q.ContainsKey(key) ? q[key].ToString() : "";
+    bool Has(string key) => q.ContainsKey(key);
+    if (effectiveExamId != null)
+    {
+        ViewData["DataExamId"] = effectiveExamId;
+    }
+    else if (selectedExamId != null)
+    {
+        ViewData["DataExamId"] = selectedExamId;
+    }
+}
+<div class="page-content">
+    <nav class="ops-view-tabs ux-tab-bar card" role="tablist" aria-label="@Localizer["ops.title"]">
+        <a class="ux-tab@(opsView == "list" ? " is-active" : "")"
+           asp-controller="Admin" asp-action="Operations" asp-route-view="list" role="tab">@Localizer["ops.myExams"]</a>
+        <a class="ux-tab@(opsView == "create" ? " is-active" : "")"
+           asp-controller="Admin" asp-action="Operations" asp-route-view="create" asp-route-tab="exam" role="tab">@Localizer["ops.tab.createExam"]</a>
+    </nav>
+
+@if (opsView == "list")
+{
+    <section class="card panel">
+        @if (Q("published") == "1")
+        {
+            <p class="form-success">@Localizer["ops.published.success"]</p>
+        }
+        @if (Has("emails_sent"))
+        {
+            <p class="form-success">@Localizer["ops.published.emails", Q("emails_sent")]</p>
+        }
+        @if (Has("examiner_assigned"))
+        {
+            <p class="form-success">@Localizer["ops.examiner.assigned.success"]</p>
+        }
+        @if (Has("grader_assigned"))
+        {
+            <p class="form-success">@Localizer["ops.grader.assigned.success"]</p>
+        }
+        @if (Q("error") == "assign_examiner")
+        {
+            <p class="form-error">@Localizer["ops.examiner.assign.error"]</p>
+        }
+        @if (Q("error") == "assign_grader")
+        {
+            <p class="form-error">@Localizer["ops.grader.assign.error"]</p>
+        }
+        <div class="section-head">
+            <div class="btn-row">
+                <a class="btn-outline@(lifecycleFilter == "" ? " is-active" : "")"
+                   asp-controller="Admin" asp-action="Operations" asp-route-view="list">@Localizer["ops.filter.all"]</a>
+                <a class="btn-outline@(lifecycleFilter == "FINISHED" ? " is-active" : "")"
+                   asp-controller="Admin" asp-action="Operations" asp-route-view="list" asp-route-lifecycle="FINISHED">@Localizer["ops.filter.finished"]</a>
+                <a class="btn-outline@(lifecycleFilter == "IN_PROGRESS" ? " is-active" : "")"
+                   asp-controller="Admin" asp-action="Operations" asp-route-view="list" asp-route-lifecycle="IN_PROGRESS">@Localizer["ops.filter.inProgress"]</a>
+                <a class="btn-outline@(lifecycleFilter == "NOT_STARTED" ? " is-active" : "")"
+                   asp-controller="Admin" asp-action="Operations" asp-route-view="list" asp-route-lifecycle="NOT_STARTED">@Localizer["ops.filter.notStarted"]</a>
+            </div>
+        </div>
+        @{
+            var summaries = examSummaries?.Cast<object>().ToList() ?? new List<object>();
+        }
+        @if (summaries.Count > 0)
+        {
+            <div class="table-shell">
+                <table class="data-table">
+                    <thead>
+                    <tr>
+                        <th>@Localizer["ops.col.examName"]</th>
+                        <th>@Localizer["ops.col.status"]</th>
+                        <th>@Localizer["ops.col.questions"]</th>
+                        <th>@Localizer["ops.col.candidates"]</th>
+                        @if (isAdmin) { <th>@Localizer["ops.col.examiner"]</th> }
+                        <th>@Localizer["ops.col.actions"]</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (object s in summaries)
+                    {
+                        var exam = ViewMap.Get(s, "exam") as Jadeer.Exam.Models.Exam;
+                        var lifecycle = ViewMap.Get(s, "lifecycle")?.ToString() ?? "";
+                        var examId = exam?.Id;
+                        var examTitle = exam?.Title;
+                        <tr>
+                            <td>@examTitle</td>
+                            <td>@Localizer["ops.lifecycle." + lifecycle]</td>
+                            <td>@ViewMap.Get(s, "questionCount")</td>
+                            <td>@ViewMap.Get(s, "assignedCount") / @ViewMap.Get(s, "completedCount")</td>
+                            @if (isAdmin)
+                            {
+                                <td>
+                                    <form class="inline-assign-form" asp-controller="Admin" asp-action="AssignExaminerToExam" asp-route-id="@examId" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <select name="examinerUserId" required>
+                                            <option value="">@Localizer["ops.examiner.select"]</option>
+                                            @if (examiners != null)
+                                            {
+                                                foreach (dynamic e in examiners)
+                                                {
+                                                    var assignedId = ViewMap.Get(s, "assignedExaminerId");
+                                                    <option value="@e.Id" selected="@(assignedId != null && Equals(assignedId, e.Id) ? "selected" : null)">@Txt.Person((string)e.FullName, (string)e.Email)</option>
+                                                }
+                                            }
+                                        </select>
+                                        <button class="btn-outline" type="submit">@Localizer["ops.assignExaminer"]</button>
+                                    </form>
+                                    @if (ViewMap.Get(s, "assignedExaminerName") != null)
+                                    {
+                                        <span class="muted">@ViewMap.Get(s, "assignedExaminerName")</span>
+                                    }
+                                </td>
+                            }
+                            <td class="table-actions">
+                                <a class="btn-outline" asp-controller="Admin" asp-action="ExamPreview" asp-route-id="@examId">@Localizer["ops.preview"]</a>
+                                <a class="btn-primary" asp-controller="Admin" asp-action="Operations" asp-route-view="create" asp-route-tab="questions" asp-route-examId="@examId" asp-route-qtype="mcq">@Localizer["ops.continueSetup"]</a>
+                                <a class="btn-outline" asp-controller="Admin" asp-action="Operations" asp-route-view="create" asp-route-tab="candidates" asp-route-examId="@examId">@Localizer["ops.candidates.short"]</a>
+                                <a class="btn-outline" asp-controller="Reports" asp-action="Reports" asp-route-examId="@examId">@Localizer["ops.report"]</a>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p class="empty-state">@Localizer["ops.noExamsInFilter"]</p>
+        }
+    </section>
+}
+
+@if (opsView == "create")
+{
+    <nav class="ops-step-timeline card" aria-label="Ø®Ø·ÙˆØ§Øª Ø§Ù„Ø¥Ø¹Ø¯Ø§Ø¯">
+        <a class="ops-step-timeline-item@(defaultTab == "exam" ? " is-active" : (effectiveExamId != null ? " is-done" : " is-pending"))"
+           asp-controller="Admin" asp-action="Operations" asp-route-view="create" asp-route-tab="exam" asp-route-examId="@effectiveExamId">
+            <span class="ops-wizard-step-num">1</span>
+            <span>@Localizer["ops.tab.examData"]</span>
+        </a>
+        @if (effectiveExamId != null)
+        {
+            <a class="ops-step-timeline-item@(defaultTab == "questions" ? " is-active" : (defaultTab == "candidates" || effectiveExamId != null ? " is-done" : " is-pending"))"
+               asp-controller="Admin" asp-action="Operations" asp-route-view="create" asp-route-tab="questions" asp-route-examId="@effectiveExamId" asp-route-qtype="mcq">
+                <span class="ops-wizard-step-num">2</span>
+                <span>@Localizer["ops.tab.questionBank"]</span>
+            </a>
+        }
+        else
+        {
+            <span class="ops-step-timeline-item is-pending">
+                <span class="ops-wizard-step-num">2</span>
+                <span>@Localizer["ops.tab.questionBank"]</span>
+            </span>
+        }
+        @if (effectiveExamId != null)
+        {
+            <a class="ops-step-timeline-item@(defaultTab == "candidates" ? " is-active" : " is-pending")"
+               asp-controller="Admin" asp-action="Operations" asp-route-view="create" asp-route-tab="candidates" asp-route-examId="@effectiveExamId">
+                <span class="ops-wizard-step-num">3</span>
+                <span>@Localizer["ops.tab.candidates"]</span>
+            </a>
+        }
+        else
+        {
+            <span class="ops-step-timeline-item is-pending">
+                <span class="ops-wizard-step-num">3</span>
+                <span>@Localizer["ops.tab.candidates"]</span>
+            </span>
+        }
+    </nav>
+
+    @if (defaultTab == "exam")
+    {
+        <section id="exam-setup" class="card panel ops-exam-setup">
+            <div class="section-head">
+                <h2 class="panel-heading">@Localizer["ops.tab.examData"]</h2>
+            </div>
+            <form id="examCreateForm" class="admin-form form-grid-2" asp-controller="Admin" asp-action="CreateExam" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="creationMode" value="MANUAL">
+                <input type="text" id="examTitle" name="title" placeholder="@Localizer["ops.examName.required"]" required style="grid-column:1/-1">
+                <p id="examCreateError" class="form-error hidden" role="alert" style="grid-column:1/-1"></p>
+                @if (Q("error") == "no_dept")
+                {
+                    <p class="form-error" style="grid-column:1/-1">@Localizer["ops.error.noDept"]</p>
+                }
+                @if (isAdmin)
+                {
+                    <select name="departmentId" id="examDepartmentId" required>
+                        <option value="">@Localizer["ops.department"]</option>
+                        @if (departments != null)
+                        {
+                            foreach (dynamic d in departments)
+                            {
+                                <option value="@d.Id">@d.Name</option>
+                            }
+                        }
+                    </select>
+                }
+                @{
+                    var dpVd = new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary(ViewData);
+                    dpVd["Storage"] = "minutes";
+                    dpVd["HiddenName"] = "durationMinutes";
+                    dpVd["HiddenId"] = "examDurationMinutes";
+                    dpVd["SubmitUnitFields"] = true;
+                }
+                <div style="grid-column:1/-1">
+                    @await Html.PartialAsync("_DurationPicker", null, dpVd)
+                </div>
+                <input type="number" name="totalMarks" id="totalMarks" min="1" required placeholder="@Localizer["ops.totalMarks.placeholder"]">
+                <input type="number" name="passThreshold" id="passThreshold" min="1" required placeholder="@Localizer["ops.passThreshold.placeholder"]" value="70">
+                <label class="inline-check" style="grid-column:1/-1">
+                    <input type="checkbox" name="practicalEnabled" id="practicalEnabled" value="true">
+                    <span>@Localizer["ops.practical.enabled"]</span>
+                </label>
+                <input type="number" name="practicalMaxMarks" id="practicalMaxMarks" min="1"
+                       class="hidden" style="grid-column:1/-1"
+                       placeholder="@Localizer["ops.practical.maxMarks.placeholder"]">
+                @if (Q("error") == "practical")
+                {
+                    <p class="form-error" style="grid-column:1/-1">@Localizer["ops.error.practical"]</p>
+                }
+                <select name="opportunityType">
+                    <option value="TRAINING">@Localizer["ops.opportunity.training"]</option>
+                    <option value="CONTRACT">@Localizer["ops.opportunity.contract"]</option>
+                    <option value="RC">@Localizer["ops.opportunity.rc"]</option>
+                </select>
+                <input type="text" name="jobTitle" placeholder="@Localizer["ops.jobTitle"]">
+                <input type="text" name="companyName" placeholder="@Localizer["ops.company"]">
+                <input type="text" name="city" placeholder="@Localizer["ops.city"]">
+                <input type="number" name="opportunityYear" min="2020" max="2100" placeholder="@Localizer["ops.year"]">
+                <label class="inline-check" style="grid-column:1/-1">
+                    <input type="checkbox" name="randomized" value="true">
+                    <span>@Localizer["ops.randomOrder"]</span>
+                </label>
+                <button id="examCreateBtn" class="btn-primary" type="submit" style="grid-column:1/-1">@Localizer["ops.goToQuestions"]</button>
+            </form>
+        </section>
+    }
+
+    @if (defaultTab == "questions")
+    {
+        <div class="card ops-wizard-card">
+            <div class="ops-wizard-panel">
+                <h2 class="panel-heading">@Localizer["ops.tab.questionBank"]</h2>
+                <p id="questionSuccessMsg" class="form-success hidden" role="status">@Localizer["ops.q.success"]</p>
+                @if (Has("updated")) { <p class="form-success">@Localizer["ops.q.updated.success"]</p> }
+                @if (Has("deleted")) { <p class="form-success">@Localizer["ops.q.deleted.success"]</p> }
+                <p id="questionBudgetError" class="form-error hidden" role="alert"></p>
+
+                <select id="questionExamId" class="admin-form" style="margin-bottom:12px" required>
+                    <option value="">@Localizer["ops.q.selectExam"]</option>
+                    @if (exams != null)
+                    {
+                        foreach (dynamic exam in exams)
+                        {
+                            var budget = examBudgets != null && examBudgets.Contains(exam.Id) ? examBudgets[exam.Id] : null;
+                            var selected = (selectedExamId != null && Equals(selectedExamId, exam.Id))
+                                || (selectedExamId == null && effectiveExamId != null && Equals(effectiveExamId, exam.Id));
+                            <option value="@exam.Id"
+                                    selected="@(selected ? "selected" : null)"
+                                    data-total-seconds="@(budget != null ? ((dynamic)budget).TotalSeconds : 0)"
+                                    data-remaining-seconds="@(budget != null ? ((dynamic)budget).RemainingSeconds : 0)"
+                                    data-total-marks="@(budget != null ? ((dynamic)budget).TotalMarks : "")"
+                                    data-remaining-marks="@(budget != null ? ((dynamic)budget).RemainingMarks : "")">@exam.Title</option>
+                        }
+                    }
+                </select>
+
+                <div class="question-type-tabs">
+                    <div class="ux-tab-bar ops-qtype-bar" role="tablist">
+                        <a class="ux-tab@(questionTypeTab == "mcq" ? " is-active" : "")"
+                           asp-controller="Admin" asp-action="Operations"
+                           asp-route-view="create" asp-route-tab="questions"
+                           asp-route-examId="@(selectedExamId ?? effectiveExamId)" asp-route-qtype="mcq">@Localizer["ops.q.tab.mcq"]</a>
+                        <a class="ux-tab@(questionTypeTab == "essay" ? " is-active" : "")"
+                           asp-controller="Admin" asp-action="Operations"
+                           asp-route-view="create" asp-route-tab="questions"
+                           asp-route-examId="@(selectedExamId ?? effectiveExamId)" asp-route-qtype="essay">@Localizer["ops.q.tab.essay"]</a>
+                    </div>
+
+                    @if (questionTypeTab == "mcq")
+                    {
+                        <div class="ops-qtype-panel">
+                            <form id="mcqQuestionForm" class="admin-form compact-admin-form" asp-controller="Admin" asp-action="AddQuestion" method="post" enctype="multipart/form-data">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="examId" id="mcqExamIdHidden" value="@(selectedExamId ?? effectiveExamId)">
+                                <input type="hidden" name="essayQuestion" value="false">
+                                <textarea name="text" rows="3" placeholder="@Localizer["ops.q.text"]" required></textarea>
+                                <input type="text" name="topic" placeholder="@Localizer["ops.q.section"]">
+                                <div class="form-grid-2">
+                                    <input type="text" name="optionA" placeholder="@Localizer["ops.q.optionA"]" required>
+                                    <input type="text" name="optionB" placeholder="@Localizer["ops.q.optionB"]" required>
+                                    <input type="text" name="optionC" placeholder="@Localizer["ops.q.optionC"]">
+                                    <input type="text" name="optionD" placeholder="@Localizer["ops.q.optionD"]">
+                                </div>
+                                <div class="form-grid-2">
+                                    <input type="text" name="correctOption" placeholder="@Localizer["ops.q.correct"]" required>
+                                    <input type="number" min="1" name="mark" placeholder="@Localizer["ops.q.mark"]" required>
+                                </div>
+                                @{
+                                    var dpSec = new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary(ViewData);
+                                    dpSec["Storage"] = "seconds";
+                                    dpSec["HiddenName"] = "durationSeconds";
+                                    dpSec["HiddenId"] = "";
+                                    dpSec["SubmitUnitFields"] = false;
+                                }
+                                @await Html.PartialAsync("_DurationPicker", null, dpSec)
+                                <div class="question-image-field">
+                                    <p class="question-image-field-title">@Localizer["ops.q.image"]</p>
+                                    <p class="muted question-image-field-hint">@Localizer["ops.q.image.hint"]</p>
+                                    <label class="question-image-upload">
+                                        <span class="question-image-upload-btn">@Localizer["ops.q.image.choose"]</span>
+                                        <input type="file" name="image" accept="image/jpeg,image/png,image/webp,image/gif">
+                                        <span class="question-image-upload-name muted" data-empty-label=""></span>
+                                    </label>
+                                    <figure class="question-image-preview hidden">
+                                        <img class="question-image-preview-img" alt="" />
+                                    </figure>
+                                </div>
+                                <button id="addMcqBtn" class="btn-primary" type="submit">@Localizer["ops.q.add.mcq"]</button>
+                            </form>
+                        </div>
+                    }
+
+                    @if (questionTypeTab == "essay")
+                    {
+                        <div class="ops-qtype-panel">
+                            <form id="essayQuestionForm" class="admin-form compact-admin-form" asp-controller="Admin" asp-action="AddQuestion" method="post" enctype="multipart/form-data">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="examId" id="essayExamIdHidden" value="@(selectedExamId ?? effectiveExamId)">
+                                <input type="hidden" name="essayQuestion" value="true">
+                                <textarea name="text" rows="4" placeholder="@Localizer["ops.q.text"]" required></textarea>
+                                <input type="text" name="topic" placeholder="@Localizer["ops.q.section"]">
+                                <div class="form-grid-2">
+                                    <input type="number" min="1" name="mark" placeholder="@Localizer["ops.q.mark"]" required>
+                                </div>
+                                @{
+                                    var dpEssay = new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary(ViewData);
+                                    dpEssay["Storage"] = "seconds";
+                                    dpEssay["HiddenName"] = "durationSeconds";
+                                    dpEssay["HiddenId"] = "";
+                                    dpEssay["SubmitUnitFields"] = false;
+                                }
+                                @await Html.PartialAsync("_DurationPicker", null, dpEssay)
+                                <textarea name="rubric" rows="3" placeholder="@Localizer["ops.q.rubric"]" required></textarea>
+                                <div class="question-image-field">
+                                    <p class="question-image-field-title">@Localizer["ops.q.image"]</p>
+                                    <p class="muted question-image-field-hint">@Localizer["ops.q.image.hint"]</p>
+                                    <label class="question-image-upload">
+                                        <span class="question-image-upload-btn">@Localizer["ops.q.image.choose"]</span>
+                                        <input type="file" name="image" accept="image/jpeg,image/png,image/webp,image/gif">
+                                        <span class="question-image-upload-name muted" data-empty-label=""></span>
+                                    </label>
+                                    <figure class="question-image-preview hidden">
+                                        <img class="question-image-preview-img" alt="" />
+                                    </figure>
+                                </div>
+                                <button id="addEssayBtn" class="btn-primary" type="submit">@Localizer["ops.q.add.essay"]</button>
+                            </form>
+                        </div>
+                    }
+                </div>
+
+                @{
+                    var qList = examQuestions?.Cast<object>().ToList() ?? new List<object>();
+                }
+                @if (qList.Count > 0)
+                {
+                    <hr class="soft-divider" style="margin:16px 0">
+                    <section>
+                        <h3 class="sub-heading">@Localizer["ops.q.list.title"]</h3>
+                        <div class="question-bank-list">
+                            @{ var st = 0; }
+                            @foreach (dynamic qq in qList)
+                            {
+                                st++;
+                                <article class="question-bank-item card">
+                                    <div class="question-bank-item-head">
+                                        <strong>@Localizer["exam.preview.question", st]</strong>
+                                        <span class="badge">@(qq.Essay == true ? Localizer["ops.q.tab.essay"] : Localizer["ops.q.tab.mcq"])</span>
+                                    </div>
+                                    <p class="question-bank-text">@qq.Text</p>
+                                    @if (qq.HasImage == true)
+                                    {
+                                        <figure class="question-image-wrap">
+                                            <img class="question-image"
+                                                 src="~/admin/exams/@effectiveExamId/questions/@qq.Id/image"
+                                                 alt="@Localizer["exam.question.image.alt"]"/>
+                                        </figure>
+                                    }
+                                    <p class="muted question-bank-meta">@Localizer["ops.q.list.meta", qq.Mark, qq.DurationSeconds]</p>
+                                    <div class="btn-row">
+                                        <a class="btn-outline"
+                                           asp-controller="Admin" asp-action="EditQuestion"
+                                           asp-route-examId="@effectiveExamId" asp-route-qid="@qq.Id">@Localizer["ops.q.edit"]</a>
+                                        <form asp-controller="Admin" asp-action="DeleteQuestion"
+                                              asp-route-examId="@effectiveExamId" asp-route-qid="@qq.Id"
+                                              method="post"
+                                              data-confirm-msg="@Localizer["ops.q.delete.confirm"]"
+                                              onsubmit="return confirm(this.dataset.confirmMsg);">
+                                            @Html.AntiForgeryToken()
+                                            <button class="btn-danger" type="submit">@Localizer["ops.q.delete"]</button>
+                                        </form>
+                                    </div>
+                                </article>
+                            }
+                        </div>
+                    </section>
+                }
+
+                <hr class="soft-divider" style="margin:16px 0">
+                <h3 class="sub-heading">@Localizer["ops.excel.import.questions"]</h3>
+                <div class="btn-row" style="margin-bottom:10px">
+                    <a class="btn-outline" href="~/admin/templates/question-bank.xlsx">@Localizer["ops.excel.download.template"]</a>
+                </div>
+                <form id="importQuestionsExcelForm" class="admin-form" asp-controller="Admin" asp-action="ImportQuestionsExcel" method="post" enctype="multipart/form-data">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="examId" id="importQuestionsExamIdHidden" value="@(selectedExamId ?? effectiveExamId)">
+                    <input type="file" name="file" accept=".xlsx,.xls" required>
+                    <button class="btn-outline" type="submit">@Localizer["ops.excel.import"]</button>
+                </form>
+
+                @if (effectiveExamId != null && wizardHasExam)
+                {
+                    <a id="goToCandidatesBtn" class="btn-primary" style="display:block;width:100%;margin-top:14px;text-align:center"
+                       asp-controller="Admin" asp-action="Operations" asp-route-view="create" asp-route-tab="candidates" asp-route-examId="@effectiveExamId">@Localizer["ops.goToCandidates"]</a>
+                }
+                @if (effectiveExamId != null && !wizardHasExam)
+                {
+                    <span id="goToCandidatesBtnDisabled" class="btn-primary is-disabled" style="display:block;width:100%;margin-top:14px;text-align:center">@Localizer["ops.goToCandidates"]</span>
+                }
+                <div class="btn-row" style="margin-top:14px">
+                    <a id="previewExamBtn" class="btn-outline hidden" href="~/admin/exams/0/preview">@Localizer["ops.q.preview"]</a>
+                    <button id="publishExamBtn" class="btn-outline hidden" type="button">@Localizer["ops.q.publish"]</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (defaultTab == "candidates")
+    {
+        <partial name="_OperationsCandidates" />
+    }
+}
+</div>
+<form id="publishExamForm" method="post" style="display:none">
+    @Html.AntiForgeryToken()
+</form>
+@section Scripts {
+<script>
+    window.__RC_OPS_WIZARD = {
+        hintQuestions: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.tab.locked.questions"].Value)),
+        hintCandidates: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.tab.locked.candidates"].Value)),
+        errorTitle: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.error.title"].Value)),
+        errorDuration: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.error.duration"].Value)),
+        errorDepartment: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.error.department"].Value)),
+        errorNoDept: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.error.noDept"].Value)),
+        errorMarks: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.error.marks"].Value)),
+        errorPass: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.error.pass"].Value)),
+        errorPractical: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.error.practical"].Value)),
+        errorTemplate: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.error.template"].Value)),
+        errorWizardQuestions: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.error.wizard_questions"].Value)),
+        errorFields: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.wizard.error.fields"].Value))
+    };
+    window.__RC_OPS_BUDGET = {
+        selectExam: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.budget.selectExam"].Value)),
+        remainingTime: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.budget.remainingTime"].Value)),
+        remainingMarks: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.budget.remainingMarks"].Value)),
+        errorTime: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.budget.error.time"].Value)),
+        errorMarks: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.budget.error.marks"].Value)),
+        errorDuration: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.budget.error.duration"].Value)),
+        errorNoExam: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.budget.error.noExam"].Value)),
+        errorImageSize: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.error.imageSize"].Value)),
+        errorImageType: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.error.imageType"].Value)),
+        errorImageSave: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.error.imageSave"].Value)),
+        minute: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.duration.unit.minutes"].Value)),
+        hour: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.duration.unit.hours"].Value))
+    };
+</script>
+<script defer src="~/js/admin-operations.js?v=@assetsVersion"></script>
+}

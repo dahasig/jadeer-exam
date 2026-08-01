@@ -1,0 +1,64 @@
+@{
+    Layout = null;
+    var pageLang = ViewData["PageLang"] as string ?? "ar";
+    var pageDir = ViewData["PageDir"] as string ?? "rtl";
+    var assetsVersion = ViewData["AssetsVersion"];
+    var langArUrl = ViewData["LangArUrl"] as string ?? "?lang=ar";
+    var langEnUrl = ViewData["LangEnUrl"] as string ?? "?lang=en";
+    var error = ViewBag.Error as string;
+}
+<!DOCTYPE html>
+<html lang="@pageLang" dir="@pageDir">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MFA | @Localizer["app.brand"]</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/style.css?v=@assetsVersion">
+    <script defer src="~/js/page-ux.js?v=@assetsVersion"></script>
+</head>
+<body class="login-page">
+
+<div class="login-bg" aria-hidden="true"></div>
+
+<header class="login-top-bar">
+    <div class="login-top-left">
+        <div class="login-lang-switch" role="group" aria-label="Language">
+            <a class="login-lang-btn@(pageLang == "ar" ? " is-active" : "")" href="@langArUrl">عربي</a>
+            <a class="login-lang-btn@(pageLang == "en" ? " is-active" : "")" href="@langEnUrl">English</a>
+        </div>
+    </div>
+    <div class="login-top-rc-logo">
+        <img class="rc-brand-logo rc-brand-logo--color" src="~/images/logo-rc-color.png?v=@assetsVersion" alt="الهيئة الملكية للجبيل وينبع"/>
+        <img class="rc-brand-logo rc-brand-logo--white" src="~/images/logo-rc-white.png?v=@assetsVersion" alt="الهيئة الملكية للجبيل وينبع" aria-hidden="true"/>
+    </div>
+</header>
+
+<main class="login-shell">
+    <article class="login-card">
+        <header class="login-hero">
+            <h1 class="login-product">@Localizer["login.brand"]</h1>
+            <p class="muted" style="margin-top:0.5rem;">أدخل رمز التحقق من تطبيق المصادقة</p>
+        </header>
+        <section class="login-body">
+            <form asp-controller="Account" asp-action="MfaVerify" method="post" class="login-form">
+                @Html.AntiForgeryToken()
+                <div class="login-field">
+                    <label for="code">رمز MFA</label>
+                    <input id="code" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code" placeholder="000000">
+                </div>
+                <button type="submit" class="btn-primary login-submit">تأكيد</button>
+                @if (error == "invalid")
+                {
+                    <p class="login-error" style="color:#b91c1c;margin-top:0.75rem;">رمز التحقق غير صحيح.</p>
+                }
+            </form>
+        </section>
+    </article>
+</main>
+
+<script defer src="~/js/theme.js"></script>
+</body>
+</html>

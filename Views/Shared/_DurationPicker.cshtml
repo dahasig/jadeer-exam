@@ -1,0 +1,47 @@
+@* storage: minutes | seconds *@
+@{
+    var storage = ViewData["Storage"] as string ?? "seconds";
+    var hiddenName = ViewData["HiddenName"] as string ?? "durationSeconds";
+    var hiddenId = ViewData["HiddenId"] as string ?? "";
+    var submitUnitFields = ViewData["SubmitUnitFields"] as bool? == true;
+}
+<div class="duration-picker-wrap form-grid-2"
+     data-storage="@storage"
+     data-hidden-name="@hiddenName">
+    @if (submitUnitFields)
+    {
+        <select class="duration-picker-value" name="durationValue" required aria-label="@Localizer["ops.q.duration.value"]">
+            <option value="">@Localizer["ops.q.duration.value"]</option>
+            @for (var n = 1; n <= 60; n++)
+            {
+                <option value="@n">@n</option>
+            }
+        </select>
+        <select class="duration-picker-unit" name="durationUnit" required aria-label="@Localizer["ops.q.duration"]">
+            <option value="minutes">@Localizer["ops.q.duration.unit.minutes"]</option>
+            <option value="hours">@Localizer["ops.q.duration.unit.hours"]</option>
+        </select>
+    }
+    else
+    {
+        <select class="duration-picker-value" required aria-label="@Localizer["ops.q.duration.value"]">
+            <option value="">@Localizer["ops.q.duration.value"]</option>
+            @for (var n = 1; n <= 60; n++)
+            {
+                <option value="@n">@n</option>
+            }
+        </select>
+        <select class="duration-picker-unit" required aria-label="@Localizer["ops.q.duration"]">
+            <option value="minutes">@Localizer["ops.q.duration.unit.minutes"]</option>
+            <option value="hours">@Localizer["ops.q.duration.unit.hours"]</option>
+        </select>
+    }
+    @if (string.IsNullOrEmpty(hiddenId))
+    {
+        <input type="hidden" class="duration-picker-hidden" name="@hiddenName">
+    }
+    else
+    {
+        <input type="hidden" class="duration-picker-hidden" name="@hiddenName" id="@hiddenId">
+    }
+</div>

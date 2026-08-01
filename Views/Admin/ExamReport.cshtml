@@ -1,0 +1,135 @@
+﻿@{
+    dynamic exam = ViewBag.Exam;
+    ViewData["Title"] = exam?.Title?.ToString() ?? Localizer["exam.report.results"].Value;
+    ViewData["ActiveNav"] = "reports";
+    ViewData["BodyClass"] = "app-body exam-report-print";
+    var examResultRows = ViewBag.ExamResultRows as System.Collections.IEnumerable;
+    var events = ViewBag.Events as System.Collections.IEnumerable;
+    var practicalEnabled = exam?.PracticalEnabled == true;
+    var passThreshold = exam?.PassThreshold != null ? (object)exam.PassThreshold : 70;
+}
+<header class="page-topbar card">
+    <div>
+        <h1 class="page-title">@exam.Title</h1>
+    </div>
+    <div class="page-topbar-actions no-print">
+        <a class="btn-outline" asp-controller="Reports" asp-action="Reports">@Localizer["exam.report.back"]</a>
+        <span class="export-btn-group">
+            <a class="btn-outline" asp-controller="Reports" asp-action="ExportExamCsv" asp-route-id="@exam.Id">@Localizer["exam.report.export.csv"]</a>
+            <a class="btn-outline" asp-controller="Reports" asp-action="ExportExamExcel" asp-route-id="@exam.Id">@Localizer["exam.report.export.xlsx"]</a>
+            <a class="btn-outline" asp-controller="Reports" asp-action="ExportExamPdf" asp-route-id="@exam.Id">@Localizer["exam.report.export.pdf"]</a>
+        </span>
+        <button class="btn-outline" type="button" onclick="window.print()">@Localizer["exam.report.print"]</button>
+    </div>
+</header>
+<div class="page-content">
+    <section class="card panel">
+        <h2>@Localizer["exam.report.results"]</h2>
+        <div class="table-shell">
+            <table class="data-table">
+                <thead>
+                <tr>
+                    <th>@Localizer["exam.report.col.examiner"]</th>
+                    <th>@Localizer["reports.col.objective"]</th>
+                    <th>@Localizer["reports.col.essay"]</th>
+                    @if (practicalEnabled)
+                    {
+                        <th>@Localizer["ops.practical.score"]</th>
+                    }
+                    <th>@Localizer["exam.report.col.score"]</th>
+                    <th>@Localizer["exam.report.col.submitted"]</th>
+                    <th>@Localizer["reports.col.alerts"]</th>
+                </tr>
+                </thead>
+                <tbody>
+                @if (examResultRows != null)
+                {
+                    foreach (object row in examResultRows)
+                    {
+                        var submittedAt = ViewMap.Get(row, "submittedAt");
+                        <tr>
+                            <td>@ViewMap.Str(row, "username")</td>
+                            <td>@(ViewMap.Get(row, "objectiveScore") ?? "—")</td>
+                            <td>@(ViewMap.Get(row, "essayScore") ?? "—")</td>
+                            @if (practicalEnabled)
+                            {
+                                <td>@(ViewMap.Get(row, "practicalScore") ?? "—")</td>
+                            }
+                            <td>
+                                <span class="score-chip @Txt.ScoreCssClass(ViewMap.Get(row, "score"), passThreshold)">@(ViewMap.Get(row, "score") ?? "—")</span>
+                            </td>
+                            <td>@(submittedAt != null ? ((DateTime)submittedAt).ToString("yyyy-MM-dd HH:mm:ss") : "—")</td>
+                            <td>@ViewMap.Str(row, "notes")</td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card panel">
+        <h2>@Localizer["exam.report.critical"]</h2>
+        @if (events != null)
+        {
+            foreach (object ev in events)
+            {
+                var eventTime = ViewMap.Get(ev, "eventTime");
+                var timeStr = eventTime != null ? ((DateTime)eventTime).ToString("yyyy-MM-dd HH:mm:ss") : "—";
+                var capturedAt = eventTime != null ? ((DateTime)eventTime).ToString("yyyy-MM-dd HH:mm:ss") : "";
+                var snapshotFileName = ViewMap.Get(ev, "snapshotFileName");
+                var videoFileName = ViewMap.Get(ev, "videoFileName");
+                var username = ViewMap.Get(ev, "username");
+                <div class="snapshot-gallery-row">
+                    @if (snapshotFileName != null)
+                    {
+                        <div class="snapshot-gallery-media">
+                            <a class="snapshot-open-link"
+                               asp-controller="Reports" asp-action="MediaView"
+                               asp-route-examId="@exam.Id"
+                               asp-route-fileName="@snapshotFileName"
+                               asp-route-username="@username"
+                               asp-route-capturedAt="@capturedAt"
+                               target="_blank" rel="noopener">
+                                <img src="~/admin/reports/exam/@exam.Id/snapshots/@snapshotFileName"
+                                     alt="@Localizer["reports.snapshot.alt"]"/>
+                            </a>
+                            <a class="btn-outline snapshot-open-btn no-print"
+                               asp-controller="Reports" asp-action="MediaView"
+                               asp-route-examId="@exam.Id"
+                               asp-route-fileName="@snapshotFileName"
+                               asp-route-username="@username"
+                               asp-route-capturedAt="@capturedAt"
+                               target="_blank" rel="noopener">@Localizer["reports.openSnapshot"]</a>
+                        </div>
+                    }
+                    @if (videoFileName != null)
+                    {
+                        <div class="snapshot-gallery-media">
+                            <div class="stamped-media">
+                                <video controls playsinline preload="metadata"
+                                       src="~/admin/reports/exam/@exam.Id/snapshots/@videoFileName"></video>
+                                <div class="stamped-media-overlay">
+                                    <span class="stamped-media-name">@ViewMap.Str(ev, "username")</span>
+                                    <span class="stamped-media-time">@timeStr</span>
+                                </div>
+                            </div>
+                            <a class="btn-outline snapshot-open-btn no-print"
+                               asp-controller="Reports" asp-action="MediaView"
+                               asp-route-examId="@exam.Id"
+                               asp-route-fileName="@videoFileName"
+                               asp-route-username="@username"
+                               asp-route-capturedAt="@capturedAt"
+                               target="_blank" rel="noopener">@Localizer["reports.openVideo"]</a>
+                        </div>
+                    }
+                    <div class="snapshot-gallery-side">
+                        <p><strong>@ViewMap.Str(ev, "username")</strong></p>
+                        <p>@ViewMap.Get(ev, "eventTypeLabel")</p>
+                        <p class="event-time">@timeStr</p>
+                    </div>
+                </div>
+            }
+        }
+    </section>
+</div>

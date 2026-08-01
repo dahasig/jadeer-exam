@@ -1,0 +1,9 @@
+@{
+    var pageLang = ViewData["PageLang"] as string ?? "ar";
+    var langArUrl = ViewData["LangArUrl"] as string ?? "?lang=ar";
+    var langEnUrl = ViewData["LangEnUrl"] as string ?? "?lang=en";
+}
+<div class="app-lang-switch" role="group" aria-label="Language">
+    <a class="app-lang-btn@(pageLang == "ar" ? " is-active" : "")" href="@langArUrl">عربي</a>
+    <a class="app-lang-btn@(pageLang == "en" ? " is-active" : "")" href="@langEnUrl">English</a>
+</div>

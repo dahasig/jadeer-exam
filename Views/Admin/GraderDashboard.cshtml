@@ -1,0 +1,127 @@
+﻿@{
+    ViewData["Title"] = Localizer["grading.title"].Value;
+    ViewData["ActiveNav"] = "grading";
+    var graderOnly = ViewBag.GraderOnly as bool? == true;
+    var gradingRows = ViewBag.GradingRows as System.Collections.IEnumerable;
+    var practicalRows = ViewBag.PracticalRows as System.Collections.IEnumerable;
+    var q = Context.Request.Query;
+    string Q(string key) => q.ContainsKey(key) ? q[key].ToString() : "";
+}
+<header class="page-topbar card">
+    <div>
+        <h1 class="page-title">@Localizer["grading.title"]</h1>
+        @if (graderOnly)
+        {
+            <p class="page-subtitle muted">@Localizer["grading.grader.subtitle"]</p>
+        }
+    </div>
+</header>
+<div class="page-content">
+    @if (q.ContainsKey("graded"))
+    {
+        <p class="form-success">@Localizer["grading.saved.success"]</p>
+    }
+    @if (q.ContainsKey("practical_graded"))
+    {
+        <p class="form-success">@Localizer["ops.practical.score.saved"]</p>
+    }
+    @if (Q("error") == "practical")
+    {
+        <p class="form-error">@Localizer["ops.error.practical"]</p>
+    }
+
+    <section class="card panel">
+        <h2 class="panel-heading">@Localizer["grading.section.essay"]</h2>
+        @{
+            var gList = gradingRows?.Cast<object>().ToList() ?? new List<object>();
+        }
+        @if (gList.Count > 0)
+        {
+            <div class="table-shell">
+                <table class="data-table">
+                    <thead>
+                    <tr>
+                        <th>@Localizer["reports.col.exam"]</th>
+                        <th>@Localizer["reports.col.candidate"]</th>
+                        <th>@Localizer["grading.col.submitted"]</th>
+                        <th>@Localizer["grading.col.objective"]</th>
+                        <th>@Localizer["admin.examiner.col.actions"]</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (object row in gList)
+                    {
+                        <tr>
+                            <td>@ViewMap.Get(row, "examTitle")</td>
+                            <td>@ViewMap.Get(row, "candidateUsername")</td>
+                            <td>@ViewMap.Get(row, "submittedAt")</td>
+                            <td>@(ViewMap.Get(row, "objectiveScore") ?? "—")</td>
+                            <td>
+                                <a class="btn-primary"
+                                   asp-controller="Grading" asp-action="GradeEssay" asp-route-id="@ViewMap.Get(row, "attemptId")">@Localizer["grading.action.grade"]</a>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p class="empty-state">@Localizer["grading.empty"]</p>
+        }
+    </section>
+
+    <section class="card panel" style="margin-top:16px">
+        <h2 class="panel-heading">@Localizer["grading.section.practical"]</h2>
+        @{
+            var pList = practicalRows?.Cast<object>().ToList() ?? new List<object>();
+        }
+        @if (pList.Count > 0)
+        {
+            <div class="table-shell">
+                <table class="data-table">
+                    <thead>
+                    <tr>
+                        <th>@Localizer["reports.col.exam"]</th>
+                        <th>@Localizer["reports.col.candidate"]</th>
+                        <th>@Localizer["grading.col.submitted"]</th>
+                        <th>@Localizer["reports.col.objective"]</th>
+                        <th>@Localizer["reports.col.essay"]</th>
+                        <th>@Localizer["ops.practical.score"]</th>
+                        <th>@Localizer["reports.col.score"]</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (object row in pList)
+                    {
+                        <tr>
+                            <td>@ViewMap.Get(row, "examTitle")</td>
+                            <td>@ViewMap.Get(row, "candidateUsername")</td>
+                            <td>@ViewMap.Get(row, "submittedAt")</td>
+                            <td>@(ViewMap.Get(row, "objectiveScore") ?? "—")</td>
+                            <td>@(ViewMap.Get(row, "essayScore") ?? "—")</td>
+                            <td>
+                                <form class="practical-score-form"
+                                      asp-controller="Grading" asp-action="PracticalScore" asp-route-id="@ViewMap.Get(row, "attemptId")" method="post">
+                                    @Html.AntiForgeryToken()
+                                    <input type="number" name="practicalScore" min="0"
+                                           max="@ViewMap.Get(row, "practicalMaxMarks")"
+                                           value="@ViewMap.Get(row, "practicalScore")"
+                                           placeholder="@Localizer["ops.practical.score.placeholder"]">
+                                    <button class="btn-primary" type="submit">@Localizer["ops.practical.saveScore"]</button>
+                                </form>
+                            </td>
+                            <td>@(ViewMap.Get(row, "totalScore") ?? "—")</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p class="empty-state">@Localizer["grading.practical.empty"]</p>
+        }
+    </section>
+</div>
