@@ -4,6 +4,16 @@
 
 المصدر الأصلي Java في `C:\Users\IT\RC-Exam` لم يُعدَّل.
 
+## قاعدة البيانات (MySQL)
+
+```powershell
+mysql -u root -p < sql/00_create_db_and_user.sql
+mysql -u root -p < sql/01_schema.sql
+```
+
+عدّل كلمة المرور في `sql/00_create_db_and_user.sql` وفي `appsettings.Development.json`.
+ملفات SQL في مجلد `sql/`.
+
 ## التشغيل
 
 ```powershell
