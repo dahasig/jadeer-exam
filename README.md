@@ -14,6 +14,15 @@ mysql -u root -p < sql/01_schema.sql
 عدّل كلمة المرور في `sql/00_create_db_and_user.sql` وفي `appsettings.Development.json`.
 ملفات SQL في مجلد `sql/`.
 
+## النشر على Railway
+
+1. أضف خدمة **MySQL** للمشروع واربطها بتطبيق `jadeer-exam`.
+2. عيّن متغير البيئة (Variables) أحد الخيارين:
+   - `ConnectionStrings__DefaultConnection` = سلسلة Pomelo، مثلاً  
+     `Server=xxx.railway.internal;Port=3306;Database=railway;User=root;Password=...;SslMode=Preferred;`
+   - أو اترك متغيرات MySQL التلقائية: `MYSQLHOST`, `MYSQLUSER`, `MYSQLPASSWORD`, `MYSQLDATABASE`, `MYSQLPORT`
+3. لا تعتمد على `127.0.0.1` في الإنتاج — التطبيق يقرأ الاتصال من البيئة.
+
 ## التشغيل
 
 ```powershell
