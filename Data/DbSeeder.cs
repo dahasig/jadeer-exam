@@ -24,12 +24,7 @@ public static class DbSeeder
                 var hasher = scope.ServiceProvider.GetRequiredService<PasswordHasher<UserAccount>>();
 
                 db.Database.EnsureCreated();
-
-                SeedUser(db, hasher, "admin", "System Admin", "Admin@123", Role.ADMIN);
-                SeedUser(db, hasher, "examiner", "Examiner User", "Examiner@123", Role.EXAMINER);
-                SeedUser(db, hasher, "grader", "Grader User", "Grader@123", Role.GRADER);
-                SeedUser(db, hasher, "candidate", "Candidate User", "Candidate@123", Role.CANDIDATE);
-
+                SeedUsersOnly(db, hasher);
                 logger?.LogInformation("Database ready (attempt {Attempt}/{Max}).", attempt, maxAttempts);
                 return true;
             }
@@ -46,6 +41,14 @@ public static class DbSeeder
 
         logger?.LogError(last, "Database seed failed after {Max} attempts.", maxAttempts);
         return false;
+    }
+
+    public static void SeedUsersOnly(AppDbContext db, PasswordHasher<UserAccount> hasher)
+    {
+        SeedUser(db, hasher, "admin", "System Admin", "Admin@123", Role.ADMIN);
+        SeedUser(db, hasher, "examiner", "Examiner User", "Examiner@123", Role.EXAMINER);
+        SeedUser(db, hasher, "grader", "Grader User", "Grader@123", Role.GRADER);
+        SeedUser(db, hasher, "candidate", "Candidate User", "Candidate@123", Role.CANDIDATE);
     }
 
     private static void SeedUser(

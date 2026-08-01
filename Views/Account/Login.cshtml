@@ -63,6 +63,14 @@
                     <input id="password" type="password" name="password" required autocomplete="current-password" placeholder="@Localizer["login.password.placeholder"]">
                 </div>
                 <button type="submit" class="btn-primary login-submit">@Localizer["login.submit"]</button>
+                @if (ViewBag.Error as string == "invalid")
+                {
+                    <p class="login-error" style="color:#b91c1c;margin-top:0.75rem;">@Localizer["login.error.invalid"]</p>
+                }
+                else if (ViewBag.Error as string == "database")
+                {
+                    <p class="login-error" style="color:#b91c1c;margin-top:0.75rem;">@Localizer["login.error.database"]</p>
+                }
                 @if (oauth2Enabled)
                 {
                     <div class="login-sso" style="margin-top:1rem;text-align:center;">

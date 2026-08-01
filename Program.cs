@@ -6,6 +6,7 @@ using Jadeer.Exam.Security;
 using Jadeer.Exam.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Localization;
@@ -60,13 +61,20 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 
 builder.Services.AddDistributedMemoryCache();
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "data", "dp-keys")))
+    .SetApplicationName("Jadeer.Exam");
+
+var isProd = !builder.Environment.IsDevelopment();
+var cookieSecure = isProd ? CookieSecurePolicy.Always : CookieSecurePolicy.SameAsRequest;
+
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = TimeSpan.FromMinutes(sessionMinutes);
     options.Cookie.Name = "RCEXAMSESSION.Session";
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Lax;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.Cookie.SecurePolicy = cookieSecure;
     options.Cookie.IsEssential = true;
 });
 
@@ -76,7 +84,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.Name = "RCEXAMSESSION";
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Cookie.SecurePolicy = cookieSecure;
         options.ExpireTimeSpan = TimeSpan.FromMinutes(sessionMinutes);
         options.SlidingExpiration = true;
         options.LoginPath = "/login";
@@ -115,9 +123,13 @@ builder.Services.AddAntiforgery(options =>
     options.Cookie.Name = "RCEXAM.AF";
     options.Cookie.SameSite = SameSiteMode.Lax;
     options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = cookieSecure;
 });
 
 var app = builder.Build();
+
+// Forwarded headers MUST be first so Request.IsHttps / secure cookies work on Railway
+app.UseForwardedHeaders();
 
 // Earliest possible liveness — before auth / localization / DB (Railway healthcheck)
 app.Use(async (ctx, next) =>
@@ -166,7 +178,6 @@ if (!app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Home/Error");
 }
 
-app.UseForwardedHeaders();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 
 if (!app.Environment.IsDevelopment()

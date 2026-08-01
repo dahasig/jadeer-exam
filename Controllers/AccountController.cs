@@ -20,27 +20,31 @@ public class AccountController : AppControllerBase
     private readonly PasswordHasher<UserAccount> _passwordHasher;
     private readonly MfaService _mfa;
     private readonly AuditLogger _audit;
+    private readonly ILogger<AccountController> _logger;
 
     public AccountController(
         AppDbContext db,
         PasswordHasher<UserAccount> passwordHasher,
         MfaService mfa,
-        AuditLogger audit)
+        AuditLogger audit,
+        ILogger<AccountController> logger)
     {
         _db = db;
         _passwordHasher = passwordHasher;
         _mfa = mfa;
         _audit = audit;
+        _logger = logger;
     }
 
     [AllowAnonymous]
     [HttpGet("/Account/Login")]
     [HttpGet("/login")]
-    public IActionResult Login()
+    public async Task<IActionResult> Login()
     {
         if (User.Identity?.IsAuthenticated == true)
             return RedirectToAction("Index", "Home");
 
+        await TryEnsureDemoUsersAsync();
         ViewBag.Oauth2Enabled = false;
         return View();
     }
@@ -52,26 +56,55 @@ public class AccountController : AppControllerBase
     public async Task<IActionResult> Login(string username, string password)
     {
         username = (username ?? "").Trim();
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Username == username);
-        if (user == null
-            || _passwordHasher.VerifyHashedPassword(user, user.Password, password ?? "")
-               == PasswordVerificationResult.Failed)
+        ViewBag.Oauth2Enabled = false;
+
+        try
         {
-            _audit.LoginFailure(username, ClientIp);
-            ViewBag.Oauth2Enabled = false;
-            ViewBag.Error = "invalid";
+            await TryEnsureDemoUsersAsync();
+
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.Username == username);
+            if (user == null
+                || _passwordHasher.VerifyHashedPassword(user, user.Password, password ?? "")
+                   == PasswordVerificationResult.Failed)
+            {
+                _audit.LoginFailure(username, ClientIp);
+                ViewBag.Error = "invalid";
+                return View();
+            }
+
+            if (user.MfaEnabled && !string.IsNullOrWhiteSpace(user.MfaSecret))
+            {
+                HttpContext.Session.SetString(MfaPendingKey, user.Username);
+                return RedirectToAction(nameof(MfaVerify));
+            }
+
+            await SignInAsync(user);
+            _audit.LoginSuccess(user.Username, ClientIp);
+            return RedirectAfterLogin(user.Role);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Login failed for {Username}", username);
+            ViewBag.Error = "database";
             return View();
         }
+    }
 
-        if (user.MfaEnabled && !string.IsNullOrWhiteSpace(user.MfaSecret))
+    private async Task TryEnsureDemoUsersAsync()
+    {
+        try
         {
-            HttpContext.Session.SetString(MfaPendingKey, user.Username);
-            return RedirectToAction(nameof(MfaVerify));
+            if (!await _db.Database.CanConnectAsync())
+                return;
+            await _db.Database.EnsureCreatedAsync();
+            if (await _db.Users.AnyAsync())
+                return;
+            DbSeeder.SeedUsersOnly(_db, _passwordHasher);
         }
-
-        await SignInAsync(user);
-        _audit.LoginSuccess(user.Username, ClientIp);
-        return RedirectAfterLogin(user.Role);
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not ensure demo users before login.");
+        }
     }
 
     [AllowAnonymous]

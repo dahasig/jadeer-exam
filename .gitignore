@@ -22,6 +22,7 @@ Desktop.ini
 ## App local runtime data & logs (not the C# Data/ project folder)
 /data/snapshots/
 /data/question-images/
+/data/dp-keys/
 **/snapshots/
 *.db
 *.db-shm
