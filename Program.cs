@@ -116,15 +116,26 @@ var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
 logger.LogInformation("MySQL host hint: {Hint}", ConnectionHostHint(connectionString));
 
-if (!DbSeeder.TrySeed(app.Services, logger))
+// لا نمنع فتح المنفذ بسبب MySQL — وإلا يفشل Healthcheck على Railway
+app.Lifetime.ApplicationStarted.Register(() =>
 {
-    logger.LogCritical(
-        "Database seed failed. On Railway: add a MySQL plugin and set ConnectionStrings__DefaultConnection " +
-        "(or MYSQLHOST/MYSQLUSER/MYSQLPASSWORD/MYSQLDATABASE). See sql/README.md");
-    // Keep process alive briefly so deploy logs show the message, then exit non-zero
-    throw new InvalidOperationException(
-        "Cannot connect to MySQL. Configure ConnectionStrings__DefaultConnection or MYSQL* environment variables.");
-}
+    _ = Task.Run(() =>
+    {
+        try
+        {
+            if (!DbSeeder.TrySeed(app.Services, logger))
+            {
+                logger.LogCritical(
+                    "Database seed failed. On Railway: add MySQL and set ConnectionStrings__DefaultConnection " +
+                    "or MYSQLHOST/MYSQLUSER/MYSQLPASSWORD/MYSQLDATABASE.");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(ex, "Unexpected database seed failure.");
+        }
+    });
+});
 
 if (!app.Environment.IsDevelopment())
 {
@@ -169,7 +180,7 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+// /health عبر HealthController مع [AllowAnonymous] — لا تضف MapGet هنا لأنه يخضع لـ FallbackPolicy
 
 app.Run();
 
