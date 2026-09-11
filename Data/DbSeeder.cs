@@ -24,6 +24,7 @@ public static class DbSeeder
                 var hasher = scope.ServiceProvider.GetRequiredService<PasswordHasher<UserAccount>>();
 
                 db.Database.EnsureCreated();
+                WidenAnswerColumns(db, logger);
                 SeedUsersOnly(db, hasher);
                 logger?.LogInformation("Database ready (attempt {Attempt}/{Max}).", attempt, maxAttempts);
                 return true;
@@ -49,6 +50,20 @@ public static class DbSeeder
         SeedUser(db, hasher, "examiner", "Examiner User", "Examiner@123", Role.EXAMINER);
         SeedUser(db, hasher, "grader", "Grader User", "Grader@123", Role.GRADER);
         SeedUser(db, hasher, "candidate", "Candidate User", "Candidate@123", Role.CANDIDATE);
+    }
+
+    /// <summary>Allow full essay/MCQ answer payloads (was VARCHAR 4000).</summary>
+    private static void WidenAnswerColumns(AppDbContext db, ILogger? logger)
+    {
+        try
+        {
+            db.Database.ExecuteSqlRaw("ALTER TABLE exam_attempts MODIFY COLUMN AnswersJson LONGTEXT NULL");
+            db.Database.ExecuteSqlRaw("ALTER TABLE exam_attempts MODIFY COLUMN EssayScoreJson LONGTEXT NULL");
+        }
+        catch (Exception ex)
+        {
+            logger?.LogDebug(ex, "AnswersJson column widen skipped (already longtext or unsupported).");
+        }
     }
 
     private static void SeedUser(

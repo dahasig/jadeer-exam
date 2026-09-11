@@ -130,8 +130,8 @@ CREATE TABLE IF NOT EXISTS exam_attempts (
   EssayScore INT NOT NULL DEFAULT 0,
   PracticalScore INT NULL,
   Suspicious TINYINT(1) NOT NULL DEFAULT 0,
-  AnswersJson VARCHAR(4000) NULL,
-  EssayScoreJson VARCHAR(4000) NULL,
+  AnswersJson LONGTEXT NULL,
+  EssayScoreJson LONGTEXT NULL,
   PRIMARY KEY (Id),
   KEY IX_exam_attempts_ExamId (ExamId),
   CONSTRAINT FK_exam_attempts_exams_ExamId

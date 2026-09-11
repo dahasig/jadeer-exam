@@ -1341,6 +1341,160 @@ public class ExamService
         }).ToList();
     }
 
+    /// <summary>
+    /// Full per-candidate answers report for an exam (MCQ + essay text).
+    /// Includes submitted attempts; assigned candidates without an attempt appear empty.
+    /// </summary>
+    public List<Dictionary<string, object?>> CandidateAnswersReport(string staffUsername, long examId)
+    {
+        if (!CanManageExam(staffUsername, examId))
+            return [];
+
+        var exam = GetExam(examId);
+        if (exam == null) return [];
+
+        var questions = _db.Questions.Where(q => q.ExamId == examId)
+            .OrderBy(q => q.Id)
+            .ToList();
+
+        var attempts = DedupeAttemptsByCandidate(
+                _db.ExamAttempts.Include(a => a.Exam)
+                    .Where(a => a.ExamId == examId)
+                    .OrderByDescending(a => a.StartedAt)
+                    .ToList())
+            .Where(a => a.SubmittedAt != null || !string.IsNullOrWhiteSpace(a.AnswersJson))
+            .ToList();
+
+        var byUser = attempts
+            .Where(a => !string.IsNullOrWhiteSpace(a.CandidateUsername))
+            .ToDictionary(a => a.CandidateUsername!.Trim().ToLowerInvariant(), a => a, StringComparer.OrdinalIgnoreCase);
+
+        var allowed = _db.ExamAllowedCandidates.Where(a => a.ExamId == examId).ToList();
+        var candidateKeys = new LinkedHashSet();
+        foreach (var a in allowed)
+        {
+            var key = !string.IsNullOrWhiteSpace(a.Email) ? a.Email.Trim().ToLowerInvariant() : null;
+            // Prefer matching attempt usernames; allowed list is email-based
+            if (key != null) candidateKeys.Add(key);
+        }
+        foreach (var u in byUser.Keys)
+            candidateKeys.Add(u);
+
+        // If no allowed list, just use attempts
+        if (candidateKeys.Count == 0)
+        {
+            foreach (var a in attempts)
+                if (!string.IsNullOrWhiteSpace(a.CandidateUsername))
+                    candidateKeys.Add(a.CandidateUsername.Trim().ToLowerInvariant());
+        }
+
+        var rows = new List<Dictionary<string, object?>>();
+        var index = 0;
+        foreach (var key in candidateKeys)
+        {
+            index++;
+            byUser.TryGetValue(key, out var attempt);
+            // Also try match by username containing email local-part or exact username
+            if (attempt == null)
+            {
+                attempt = attempts.FirstOrDefault(a =>
+                    string.Equals(a.CandidateUsername, key, StringComparison.OrdinalIgnoreCase));
+            }
+
+            var allowedRow = allowed.FirstOrDefault(a =>
+                string.Equals(a.Email?.Trim(), key, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(a.NationalId?.Trim(), key, StringComparison.OrdinalIgnoreCase));
+
+            var displayName = allowedRow?.FullName
+                              ?? attempt?.CandidateUsername
+                              ?? key;
+            var username = attempt?.CandidateUsername ?? allowedRow?.Email ?? key;
+
+            var answers = ParseAnswersMap(attempt?.AnswersJson);
+            var awarded = ParseEssayAwarded(attempt?.EssayScoreJson);
+            var answerRows = new List<Dictionary<string, object?>>();
+            var qNum = 0;
+            foreach (var q in questions)
+            {
+                qNum++;
+                var idKey = q.Id.ToString(CultureInfo.InvariantCulture);
+                var raw = answers.TryGetValue(idKey, out var v) ? v?.ToString()?.Trim() ?? "" : "";
+                string? selectedLabel = null;
+                var isCorrect = (bool?)null;
+                if (!q.Essay)
+                {
+                    selectedLabel = OptionLabel(q, raw);
+                    if (!string.IsNullOrEmpty(raw) && !string.IsNullOrEmpty(q.CorrectOption))
+                        isCorrect = raw.Equals(q.CorrectOption.Trim(), StringComparison.OrdinalIgnoreCase);
+                }
+
+                answerRows.Add(new Dictionary<string, object?>
+                {
+                    ["number"] = qNum,
+                    ["questionId"] = q.Id,
+                    ["text"] = q.Text,
+                    ["type"] = q.Essay ? "ESSAY" : "MCQ",
+                    ["mark"] = q.Mark ?? 0,
+                    ["answer"] = raw,
+                    ["answerLabel"] = q.Essay ? raw : (selectedLabel ?? (string.IsNullOrEmpty(raw) ? "—" : raw)),
+                    ["correctOption"] = q.Essay ? null : q.CorrectOption,
+                    ["correctLabel"] = q.Essay ? null : OptionLabel(q, q.CorrectOption),
+                    ["isCorrect"] = isCorrect,
+                    ["awarded"] = q.Essay
+                        ? (awarded.TryGetValue(idKey, out var essayPts) ? essayPts : (int?)null)
+                        : (isCorrect == true ? (q.Mark ?? 0) : (isCorrect == false ? 0 : null)),
+                    ["optionA"] = q.OptionA,
+                    ["optionB"] = q.OptionB,
+                    ["optionC"] = q.OptionC,
+                    ["optionD"] = q.OptionD
+                });
+            }
+
+            rows.Add(new Dictionary<string, object?>
+            {
+                ["index"] = index,
+                ["attemptId"] = attempt?.Id,
+                ["username"] = username,
+                ["fullName"] = displayName,
+                ["nationalId"] = allowedRow?.NationalId,
+                ["submittedAt"] = attempt?.SubmittedAt,
+                ["startedAt"] = attempt?.StartedAt,
+                ["status"] = attempt?.SubmittedAt != null ? "SUBMITTED" : (attempt != null ? "IN_PROGRESS" : "NOT_STARTED"),
+                ["objectiveScore"] = attempt?.ObjectiveScore,
+                ["essayScore"] = attempt?.EssayScore,
+                ["practicalScore"] = attempt?.PracticalScore,
+                ["totalScore"] = attempt?.Score,
+                ["answers"] = answerRows
+            });
+        }
+
+        return rows;
+    }
+
+    private static string? OptionLabel(Question q, string? optionCode)
+    {
+        if (string.IsNullOrWhiteSpace(optionCode)) return null;
+        var code = optionCode.Trim();
+        var text = code.ToUpperInvariant() switch
+        {
+            "A" => q.OptionA,
+            "B" => q.OptionB,
+            "C" => q.OptionC,
+            "D" => q.OptionD,
+            _ => null
+        };
+        return string.IsNullOrWhiteSpace(text) ? code : $"{code}) {text}";
+    }
+
+    private sealed class LinkedHashSet : IEnumerable<string>
+    {
+        private readonly Dictionary<string, byte> _map = new(StringComparer.OrdinalIgnoreCase);
+        public int Count => _map.Count;
+        public void Add(string item) => _map[item] = 0;
+        public IEnumerator<string> GetEnumerator() => _map.Keys.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     public void GradeEssayAttempt(long attemptId, Dictionary<long, int> inputScores)
     {
         var attempt = _db.ExamAttempts.Include(a => a.Exam).FirstOrDefault(a => a.Id == attemptId)

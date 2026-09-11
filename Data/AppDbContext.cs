@@ -100,8 +100,8 @@ public class AppDbContext : DbContext
         {
             e.ToTable("exam_attempts");
             e.HasKey(x => x.Id);
-            e.Property(x => x.AnswersJson).HasMaxLength(4000);
-            e.Property(x => x.EssayScoreJson).HasMaxLength(4000);
+            e.Property(x => x.AnswersJson).HasColumnType("longtext");
+            e.Property(x => x.EssayScoreJson).HasColumnType("longtext");
             e.HasOne(x => x.Exam)
                 .WithMany()
                 .HasForeignKey(x => x.ExamId)

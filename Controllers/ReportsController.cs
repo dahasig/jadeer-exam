@@ -238,6 +238,103 @@ public class ReportsController : AppControllerBase
         return View("~/Views/Admin/ExamReport.cshtml");
     }
 
+    [HttpGet("reports/exam/{id:long}/answers")]
+    public IActionResult CandidateAnswers([FromRoute(Name = "id")] long examId)
+    {
+        if (!IsStaff || !_examService.CanManageExam(CurrentUsername, examId))
+            return Redirect("/dashboard");
+
+        var exam = _examService.GetExam(examId);
+        if (exam == null) return NotFound();
+
+        ViewBag.Exam = exam;
+        ViewBag.CandidateAnswerRows = _examService.CandidateAnswersReport(CurrentUsername, examId);
+        ViewData["ActiveNav"] = "reports";
+        ViewData["Title"] = "إجابات المرشحين";
+        return View("~/Views/Admin/CandidateAnswers.cshtml");
+    }
+
+    [HttpGet("reports/exam/{id:long}/answers.xlsx")]
+    public IActionResult ExportCandidateAnswersExcel([FromRoute(Name = "id")] long examId)
+    {
+        if (!IsStaff || !_examService.CanManageExam(CurrentUsername, examId))
+            return StatusCode(403, "forbidden");
+
+        var exam = _examService.GetExam(examId);
+        if (exam == null) return NotFound();
+
+        var candidates = _examService.CandidateAnswersReport(CurrentUsername, examId);
+        using var workbook = new XLWorkbook();
+        var summary = workbook.Worksheets.Add("Candidates");
+        summary.Cell(1, 1).Value = "#";
+        summary.Cell(1, 2).Value = "Username";
+        summary.Cell(1, 3).Value = "Full name";
+        summary.Cell(1, 4).Value = "National ID";
+        summary.Cell(1, 5).Value = "Status";
+        summary.Cell(1, 6).Value = "Objective";
+        summary.Cell(1, 7).Value = "Essay";
+        summary.Cell(1, 8).Value = "Practical";
+        summary.Cell(1, 9).Value = "Total";
+        summary.Cell(1, 10).Value = "Submitted at";
+        var sr = 2;
+        foreach (var c in candidates)
+        {
+            summary.Cell(sr, 1).Value = Convert.ToInt32(c.GetValueOrDefault("index") ?? 0);
+            summary.Cell(sr, 2).Value = Convert.ToString(c.GetValueOrDefault("username"));
+            summary.Cell(sr, 3).Value = Convert.ToString(c.GetValueOrDefault("fullName"));
+            summary.Cell(sr, 4).Value = Convert.ToString(c.GetValueOrDefault("nationalId"));
+            summary.Cell(sr, 5).Value = Convert.ToString(c.GetValueOrDefault("status"));
+            summary.Cell(sr, 6).Value = Convert.ToString(c.GetValueOrDefault("objectiveScore"));
+            summary.Cell(sr, 7).Value = Convert.ToString(c.GetValueOrDefault("essayScore"));
+            summary.Cell(sr, 8).Value = Convert.ToString(c.GetValueOrDefault("practicalScore"));
+            summary.Cell(sr, 9).Value = Convert.ToString(c.GetValueOrDefault("totalScore"));
+            summary.Cell(sr, 10).Value = (c.GetValueOrDefault("submittedAt") as DateTime?)?.ToString("yyyy-MM-dd HH:mm") ?? "";
+            sr++;
+        }
+        summary.Columns().AdjustToContents();
+
+        var detail = workbook.Worksheets.Add("Full answers");
+        detail.Cell(1, 1).Value = "Candidate";
+        detail.Cell(1, 2).Value = "Full name";
+        detail.Cell(1, 3).Value = "Q#";
+        detail.Cell(1, 4).Value = "Type";
+        detail.Cell(1, 5).Value = "Question";
+        detail.Cell(1, 6).Value = "Answer (full text)";
+        detail.Cell(1, 7).Value = "Correct option";
+        detail.Cell(1, 8).Value = "Is correct";
+        detail.Cell(1, 9).Value = "Marks";
+        detail.Cell(1, 10).Value = "Awarded";
+        var dr = 2;
+        foreach (var c in candidates)
+        {
+            var username = Convert.ToString(c.GetValueOrDefault("username")) ?? "";
+            var fullName = Convert.ToString(c.GetValueOrDefault("fullName")) ?? "";
+            var answers = c.GetValueOrDefault("answers") as List<Dictionary<string, object?>> ?? [];
+            foreach (var a in answers)
+            {
+                detail.Cell(dr, 1).Value = username;
+                detail.Cell(dr, 2).Value = fullName;
+                detail.Cell(dr, 3).Value = Convert.ToString(a.GetValueOrDefault("number"));
+                detail.Cell(dr, 4).Value = Convert.ToString(a.GetValueOrDefault("type"));
+                detail.Cell(dr, 5).Value = Convert.ToString(a.GetValueOrDefault("text"));
+                detail.Cell(dr, 6).Value = Convert.ToString(a.GetValueOrDefault("answerLabel"));
+                detail.Cell(dr, 7).Value = Convert.ToString(a.GetValueOrDefault("correctLabel"));
+                var isCorrect = a.GetValueOrDefault("isCorrect");
+                detail.Cell(dr, 8).Value = isCorrect == null ? "" : (Convert.ToBoolean(isCorrect) ? "Yes" : "No");
+                detail.Cell(dr, 9).Value = Convert.ToString(a.GetValueOrDefault("mark"));
+                detail.Cell(dr, 10).Value = Convert.ToString(a.GetValueOrDefault("awarded"));
+                dr++;
+            }
+        }
+        detail.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return File(stream.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"exam-{examId}-candidate-answers.xlsx");
+    }
+
     [HttpGet("reports/attempt/{id:long}/timeline")]
     public IActionResult AttemptTimeline([FromRoute(Name = "id")] long attemptId)
     {

@@ -1,0 +1,114 @@
+@{
+    dynamic exam = ViewBag.Exam;
+    ViewData["Title"] = Localizer["exam.answers.title"].Value;
+    ViewData["ActiveNav"] = "reports";
+    ViewData["BodyClass"] = "app-body exam-report-print";
+    var candidateRows = ViewBag.CandidateAnswerRows as System.Collections.IEnumerable;
+}
+<header class="page-topbar card">
+    <div>
+        <h1 class="page-title">@Localizer["exam.answers.title"]</h1>
+        <p class="page-subtitle muted">@exam?.Title</p>
+    </div>
+    <div class="page-topbar-actions no-print">
+        <a class="btn-outline" asp-controller="Reports" asp-action="ExamReport" asp-route-id="@exam.Id">@Localizer["exam.report.results"]</a>
+        <a class="btn-outline" asp-controller="Reports" asp-action="Reports">@Localizer["exam.report.back"]</a>
+        <a class="btn-outline" asp-controller="Reports" asp-action="ExportCandidateAnswersExcel" asp-route-id="@exam.Id">@Localizer["exam.answers.export.xlsx"]</a>
+        <button class="btn-outline" type="button" onclick="window.print()">@Localizer["exam.report.print"]</button>
+    </div>
+</header>
+<div class="page-content">
+    @if (candidateRows == null || !candidateRows.Cast<object>().Any())
+    {
+        <section class="card panel">
+            <p class="empty-state">@Localizer["exam.answers.empty"]</p>
+        </section>
+    }
+    else
+    {
+        foreach (object candidate in candidateRows)
+        {
+            var status = ViewMap.Str(candidate, "status");
+            var submittedAt = ViewMap.Get(candidate, "submittedAt");
+            var answers = ViewMap.Get(candidate, "answers") as System.Collections.IEnumerable;
+            <section class="card panel" style="margin-bottom:16px">
+                <h2>
+                    #@ViewMap.Get(candidate, "index") —
+                    @ViewMap.Str(candidate, "fullName")
+                    <span class="muted">(@ViewMap.Str(candidate, "username"))</span>
+                </h2>
+                <p class="muted">
+                    @Localizer["exam.answers.status"]:
+                    @(status == "SUBMITTED" ? Localizer["exam.answers.status.submitted"].Value
+                        : status == "IN_PROGRESS" ? Localizer["exam.answers.status.inProgress"].Value
+                        : Localizer["exam.answers.status.notStarted"].Value)
+                    @if (submittedAt != null)
+                    {
+                        <span> · @(((DateTime)submittedAt).ToString("yyyy-MM-dd HH:mm"))</span>
+                    }
+                    @if (ViewMap.Get(candidate, "nationalId") != null)
+                    {
+                        <span> · @Localizer["exam.answers.nationalId"]: @ViewMap.Get(candidate, "nationalId")</span>
+                    }
+                </p>
+                <p>
+                    @Localizer["reports.col.objective"]: @(ViewMap.Get(candidate, "objectiveScore") ?? "—")
+                    · @Localizer["reports.col.essay"]: @(ViewMap.Get(candidate, "essayScore") ?? "—")
+                    · @Localizer["exam.report.col.score"]: @(ViewMap.Get(candidate, "totalScore") ?? "—")
+                </p>
+
+                <div class="table-shell">
+                    <table class="data-table">
+                        <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>@Localizer["exam.answers.col.type"]</th>
+                            <th>@Localizer["exam.answers.col.question"]</th>
+                            <th>@Localizer["exam.answers.col.answer"]</th>
+                            <th>@Localizer["exam.answers.col.correct"]</th>
+                            <th>@Localizer["exam.answers.col.result"]</th>
+                            <th>@Localizer["exam.answers.col.awarded"]</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        @if (answers != null)
+                        {
+                            foreach (object a in answers)
+                            {
+                                var type = ViewMap.Str(a, "type");
+                                var isCorrect = ViewMap.Get(a, "isCorrect");
+                                <tr>
+                                    <td>@ViewMap.Get(a, "number")</td>
+                                    <td>@(type == "ESSAY" ? Localizer["ops.q.tab.essay"] : Localizer["ops.q.tab.mcq"])</td>
+                                    <td style="white-space:pre-wrap;max-width:320px">@ViewMap.Get(a, "text")</td>
+                                    <td style="white-space:pre-wrap;max-width:420px">@ViewMap.Str(a, "answerLabel")</td>
+                                    <td>@(ViewMap.Get(a, "correctLabel") ?? "—")</td>
+                                    <td>
+                                        @if (type == "ESSAY")
+                                        {
+                                            <span>—</span>
+                                        }
+                                        else if (isCorrect == null)
+                                        {
+                                            <span>—</span>
+                                        }
+                                        else if (Convert.ToBoolean(isCorrect))
+                                        {
+                                            <span style="color:#1b7a3a">@Localizer["exam.answers.correct"]</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:#b91c1c">@Localizer["exam.answers.wrong"]</span>
+                                        }
+                                    </td>
+                                    <td>@(ViewMap.Get(a, "awarded") ?? "—") / @(ViewMap.Get(a, "mark") ?? 0)</td>
+                                </tr>
+                            }
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+    }
+</div>
