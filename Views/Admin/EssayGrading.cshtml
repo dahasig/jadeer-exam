@@ -20,6 +20,10 @@
 <div class="page-content">
     <section class="card panel">
         <p>@Localizer["essay.objective"] @(attempt.ObjectiveScore != null ? attempt.ObjectiveScore : 0)</p>
+        @if (Context.Request.Query.ContainsKey("error"))
+        {
+            <p class="login-error" style="color:#b91c1c">تعذر حفظ درجات المقال — أعد إدخال الدرجات ثم احفظ.</p>
+        }
         <form class="admin-form" method="post" asp-controller="Grading" asp-action="GradeEssay" asp-route-id="@attempt.Id">
             @Html.AntiForgeryToken()
             @if (essayRows != null)
@@ -43,7 +47,8 @@
                             <small class="muted">@Localizer["essay.rubric"] @ViewMap.Get(row, "rubric")</small>
                         }
                         <p>@Localizer["essay.answer"] @ViewMap.Str(row, "answer")</p>
-                        <input type="number" min="0" max="@mark" name="score-@questionId"
+                        <input type="number" min="0" max="@mark" name="score_@questionId"
+                               value="@(ViewMap.Get(row, "awarded") ?? 0)"
                                placeholder="@Localizer["essay.score.placeholder", mark]" required>
                     </div>
                 }

@@ -67,13 +67,24 @@ public class GradingController : AppControllerBase
         var scores = new Dictionary<long, int>();
         foreach (var key in form.Keys)
         {
-            if (key == null || !key.StartsWith("score_", StringComparison.Ordinal))
+            if (key == null)
                 continue;
-            if (!long.TryParse(key["score_".Length..], out var qid))
+            // قبول score_123 و score-123 (الواجهة كانت ترسل شرطة بالخطأ)
+            string? idPart = null;
+            if (key.StartsWith("score_", StringComparison.Ordinal))
+                idPart = key["score_".Length..];
+            else if (key.StartsWith("score-", StringComparison.Ordinal))
+                idPart = key["score-".Length..];
+            else
+                continue;
+            if (!long.TryParse(idPart, out var qid))
                 continue;
             if (int.TryParse(form[key], out var score))
                 scores[qid] = score;
         }
+
+        if (scores.Count == 0)
+            return Redirect($"/admin/attempts/{attemptId}/grade-essay?error=noscores");
 
         _examService.GradeEssayAttempt(attemptId, scores);
         return Redirect("/admin/grading?graded=1");
