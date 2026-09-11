@@ -491,6 +491,20 @@ public class AdminController : AppControllerBase
         return Redirect($"/admin/operations?view=create&tab=questions&examId={examId}");
     }
 
+    [HttpGet("exams/{id:long}/questions.xlsx")]
+    public IActionResult ExportQuestionsExcel([FromRoute(Name = "id")] long examId)
+    {
+        if (!IsStaff || !_examService.CanManageExam(CurrentUsername, examId))
+            return StatusCode(403, "forbidden");
+        if (_examService.GetExam(examId) == null)
+            return NotFound();
+
+        var bytes = _examService.ExportQuestionsToExcel(examId);
+        return File(bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"exam-{examId}-questions.xlsx");
+    }
+
     private static string MapQuestionError(string? msg)
     {
         if (string.IsNullOrEmpty(msg)) return "fields";
@@ -775,9 +789,11 @@ public class AdminController : AppControllerBase
         ws.Cell(1, 5).Value = "optionD";
         ws.Cell(1, 6).Value = "correctOption";
         ws.Cell(1, 7).Value = "mark";
-        ws.Cell(1, 8).Value = "durationSeconds";
-        ws.Cell(1, 9).Value = "essay";
-        ws.Cell(1, 10).Value = "rubric";
+        ws.Cell(1, 8).Value = "essay";
+        ws.Cell(1, 9).Value = "durationSeconds";
+        ws.Cell(1, 10).Value = "topic";
+        ws.Cell(1, 11).Value = "difficulty";
+        ws.Cell(1, 12).Value = "rubric";
         return ExcelFile(wb, "question-bank-template.xlsx");
     }
 

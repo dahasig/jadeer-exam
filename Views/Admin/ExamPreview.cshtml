@@ -16,6 +16,8 @@
         <a class="btn-outline"
            asp-controller="Admin" asp-action="Operations"
            asp-route-view="create" asp-route-tab="questions" asp-route-examId="@exam.Id" asp-route-qtype="mcq">@Localizer["exam.preview.editQuestions"]</a>
+        <a class="btn-outline"
+           asp-controller="Admin" asp-action="ExportQuestionsExcel" asp-route-id="@exam.Id">@Localizer["ops.excel.download.questions"]</a>
         @if (exam.Published != true)
         {
             <form asp-controller="Admin" asp-action="PublishExam" asp-route-id="@exam.Id" method="post">

@@ -1095,6 +1095,50 @@ public class ExamService
         return imported;
     }
 
+    /// <summary>Export all exam questions to Excel (same columns as import).</summary>
+    public byte[] ExportQuestionsToExcel(long examId)
+    {
+        var questions = _db.Questions.Where(q => q.ExamId == examId).OrderBy(q => q.Id).ToList();
+        using var workbook = new XLWorkbook();
+        var sheet = workbook.Worksheets.Add("Questions");
+        sheet.Cell(1, 1).Value = "text";
+        sheet.Cell(1, 2).Value = "optionA";
+        sheet.Cell(1, 3).Value = "optionB";
+        sheet.Cell(1, 4).Value = "optionC";
+        sheet.Cell(1, 5).Value = "optionD";
+        sheet.Cell(1, 6).Value = "correctOption";
+        sheet.Cell(1, 7).Value = "mark";
+        sheet.Cell(1, 8).Value = "essay";
+        sheet.Cell(1, 9).Value = "durationSeconds";
+        sheet.Cell(1, 10).Value = "topic";
+        sheet.Cell(1, 11).Value = "difficulty";
+        sheet.Cell(1, 12).Value = "rubric";
+        sheet.Row(1).Style.Font.Bold = true;
+
+        var r = 2;
+        foreach (var q in questions)
+        {
+            sheet.Cell(r, 1).Value = q.Text;
+            sheet.Cell(r, 2).Value = q.OptionA ?? "";
+            sheet.Cell(r, 3).Value = q.OptionB ?? "";
+            sheet.Cell(r, 4).Value = q.OptionC ?? "";
+            sheet.Cell(r, 5).Value = q.OptionD ?? "";
+            sheet.Cell(r, 6).Value = q.CorrectOption ?? "";
+            sheet.Cell(r, 7).Value = q.Mark ?? 0;
+            sheet.Cell(r, 8).Value = q.Essay ? "true" : "false";
+            sheet.Cell(r, 9).Value = q.DurationSeconds ?? 0;
+            sheet.Cell(r, 10).Value = q.Topic ?? "";
+            sheet.Cell(r, 11).Value = q.Difficulty ?? "";
+            sheet.Cell(r, 12).Value = q.Rubric ?? "";
+            r++;
+        }
+        sheet.Columns().AdjustToContents();
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return stream.ToArray();
+    }
+
     public int ImportExamCandidatesFromExcel(long examId, IFormFile file)
     {
         var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
