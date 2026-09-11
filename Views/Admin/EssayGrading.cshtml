@@ -4,6 +4,7 @@
     ViewData["ActiveNav"] = graderOnly ? "grading" : "operations";
     dynamic attempt = ViewBag.Attempt;
     var essayRows = ViewBag.EssayRows as System.Collections.IEnumerable;
+    var culture = System.Globalization.CultureInfo.InvariantCulture;
 }
 <header class="page-topbar card">
     <div>
@@ -19,7 +20,10 @@
 </header>
 <div class="page-content">
     <section class="card panel">
-        <p>@Localizer["essay.objective"] @(attempt.ObjectiveScore != null ? attempt.ObjectiveScore : 0)</p>
+        <p>@Localizer["essay.objective"] @(attempt.ObjectiveScore != null ? attempt.ObjectiveScore : 0)
+           · @Localizer["reports.col.essay"] @(attempt.EssayScore != null ? attempt.EssayScore : 0)
+           · @Localizer["exam.report.col.score"] @(attempt.Score != null ? attempt.Score : "—")
+        </p>
         @if (Context.Request.Query.ContainsKey("error"))
         {
             <p class="login-error" style="color:#b91c1c">تعذر حفظ درجات المقال — أعد إدخال الدرجات ثم احفظ.</p>
@@ -31,7 +35,7 @@
                 foreach (object row in essayRows)
                 {
                     var mark = ViewMap.Get(row, "mark");
-                    var questionId = ViewMap.Get(row, "questionId");
+                    var questionId = Convert.ToString(ViewMap.Get(row, "questionId"), culture);
                     <div class="card panel">
                         <h3>@ViewMap.Get(row, "text")</h3>
                         @if (ViewMap.Get(row, "topic") != null)
@@ -47,7 +51,7 @@
                             <small class="muted">@Localizer["essay.rubric"] @ViewMap.Get(row, "rubric")</small>
                         }
                         <p>@Localizer["essay.answer"] @ViewMap.Str(row, "answer")</p>
-                        <input type="number" min="0" max="@mark" name="score_@questionId"
+                        <input type="number" min="0" max="@mark" name="@($"score_{questionId}")"
                                value="@(ViewMap.Get(row, "awarded") ?? 0)"
                                placeholder="@Localizer["essay.score.placeholder", mark]" required>
                     </div>

@@ -466,10 +466,9 @@ public class ExamService
         var exam = attempt.Exam ?? (attempt.ExamId != null ? _db.Exams.Find(attempt.ExamId) : null);
         if (exam != null && exam.PracticalEnabled && attempt.PracticalScore != null)
             practical = attempt.PracticalScore.Value;
-        var total = objective + essay + practical;
-        if (exam?.TotalMarks != null)
-            total = Math.Min(total, exam.TotalMarks.Value);
-        attempt.Score = total;
+        // الإجمالي = مجموع المكوّنات (موضوعي + مقالي + عملي).
+        // لا نقطع بـ TotalMarks هنا حتى لا تختفي درجة المقال بعد التصحيح.
+        attempt.Score = objective + essay + practical;
     }
 
     public List<Dictionary<string, object?>> ListPracticalScoreRows(string staffUsername)
@@ -1502,11 +1501,19 @@ public class ExamService
         var examId = attempt.Exam!.Id;
         var awarded = new Dictionary<string, int>();
         var essayTotal = 0;
-        foreach (var q in _db.Questions.Where(q => q.ExamId == examId))
+        var essayQuestions = _db.Questions.Where(q => q.ExamId == examId && q.Essay).ToList();
+        foreach (var q in essayQuestions)
         {
-            if (!q.Essay) continue;
             var max = q.Mark ?? 0;
-            var val = inputScores.GetValueOrDefault(q.Id, 0);
+            // مطابقة مرنة للمفتاح (long / string)
+            var val = 0;
+            if (!inputScores.TryGetValue(q.Id, out val))
+            {
+                foreach (var kv in inputScores)
+                {
+                    if (kv.Key == q.Id) { val = kv.Value; break; }
+                }
+            }
             if (val < 0) val = 0;
             if (val > max) val = max;
             awarded[q.Id.ToString(CultureInfo.InvariantCulture)] = val;
@@ -1516,6 +1523,7 @@ public class ExamService
         RecomputeAttemptScore(attempt);
         try { attempt.EssayScoreJson = JsonSerializer.Serialize(awarded); }
         catch { attempt.EssayScoreJson = "{}"; }
+        _db.ExamAttempts.Update(attempt);
         _db.SaveChanges();
     }
 

@@ -1,4 +1,6 @@
-﻿using Jadeer.Exam.Data;
+﻿using System.Globalization;
+using System.Text.RegularExpressions;
+using Jadeer.Exam.Data;
 using Jadeer.Exam.Models;
 using Jadeer.Exam.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -67,19 +69,18 @@ public class GradingController : AppControllerBase
         var scores = new Dictionary<long, int>();
         foreach (var key in form.Keys)
         {
-            if (key == null)
+            if (string.IsNullOrWhiteSpace(key))
                 continue;
-            // قبول score_123 و score-123 (الواجهة كانت ترسل شرطة بالخطأ)
-            string? idPart = null;
-            if (key.StartsWith("score_", StringComparison.Ordinal))
-                idPart = key["score_".Length..];
-            else if (key.StartsWith("score-", StringComparison.Ordinal))
-                idPart = key["score-".Length..];
-            else
+            // score_12 / score-12 / Score_12
+            var m = Regex.Match(
+                key, @"^score[_-](\d+)$", RegexOptions.IgnoreCase);
+            if (!m.Success)
                 continue;
-            if (!long.TryParse(idPart, out var qid))
+            if (!long.TryParse(m.Groups[1].Value, out var qid))
                 continue;
-            if (int.TryParse(form[key], out var score))
+            var raw = form[key].ToString();
+            if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var score)
+                || int.TryParse(raw, out score))
                 scores[qid] = score;
         }
 
@@ -87,7 +88,7 @@ public class GradingController : AppControllerBase
             return Redirect($"/admin/attempts/{attemptId}/grade-essay?error=noscores");
 
         _examService.GradeEssayAttempt(attemptId, scores);
-        return Redirect("/admin/grading?graded=1");
+        return Redirect($"/admin/grading?graded=1&attemptId={attemptId}");
     }
 
     [HttpPost("attempts/{id:long}/practical-score")]
