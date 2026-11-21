@@ -381,7 +381,7 @@ public class ReportsController : AppControllerBase
 
         // Older filenames did not include the exam ID and could be shared across records.
         var scopedNames = new Regex(
-            $"^{examId.ToString(CultureInfo.InvariantCulture)}_[0-9a-f]{{64}}_[0-9a-f]{{32}}[.](jpg|webm)$",
+            $"^{examId.ToString(CultureInfo.InvariantCulture)}_[0-9a-f]{{64}}_[0-9a-f]{{32}}[.](jpg|webm|mp4)$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         var legacy = files.Where(name => !scopedNames.IsMatch(name)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var shared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -429,7 +429,7 @@ public class ReportsController : AppControllerBase
         if (image?.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) == true)
             yield return image;
         var video = ExtractVideoFileName(details);
-        if (video?.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) == true)
+        if (video != null && VideoExtension(video) != null)
             yield return video;
     }
 
@@ -492,7 +492,7 @@ public class ReportsController : AppControllerBase
                     var image = ExtractSnapshotFileName(entry.Details);
                     var video = ExtractVideoFileName(entry.Details);
                     var imageExport = await CopyEvidenceFile(zip, folder, image, entry.Id, ".jpg", cancellationToken);
-                    var videoExport = await CopyEvidenceFile(zip, folder, video, entry.Id, ".webm", cancellationToken);
+                    var videoExport = await CopyEvidenceFile(zip, folder, video, entry.Id, VideoExtension(video), cancellationToken);
                     var details = string.Join(" | ", (entry.Details ?? "").Split(" | ").Where(part =>
                         !part.StartsWith("لقطة مراقبة محفوظة:", StringComparison.Ordinal)
                         && !part.StartsWith("فيديو توثيق:", StringComparison.Ordinal)
@@ -524,9 +524,9 @@ public class ReportsController : AppControllerBase
     }
 
     private static async Task<string?> CopyEvidenceFile(ZipArchive zip, string folder, string? fileName,
-        long eventId, string extension, CancellationToken cancellationToken)
+        long eventId, string? extension, CancellationToken cancellationToken)
     {
-        if (fileName == null || !fileName.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+        if (fileName == null || extension == null || !fileName.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
             return null;
 
         FileStream source;
@@ -934,7 +934,7 @@ public class ReportsController : AppControllerBase
         ViewBag.MediaUrl = $"/admin/reports/exam/{examId}/snapshots/{safeName}";
         ViewBag.StampName = username?.Trim() ?? "";
         ViewBag.StampTime = capturedAt?.Trim() ?? "";
-        ViewBag.IsVideo = safeName.EndsWith(".webm", StringComparison.OrdinalIgnoreCase);
+        ViewBag.IsVideo = VideoExtension(safeName) != null;
         ViewData["ActiveNav"] = "reports";
         return View("~/Views/Admin/MediaViewer.cshtml");
     }
@@ -962,9 +962,12 @@ public class ReportsController : AppControllerBase
         if (!_monitoringService.HasMediaReference(examId, safeName) || !System.IO.File.Exists(target))
             return NotFound();
 
-        var contentType = safeName.EndsWith(".webm", StringComparison.OrdinalIgnoreCase)
-            ? "video/webm"
-            : "image/jpeg";
+        var contentType = VideoExtension(safeName) switch
+        {
+            ".mp4" => "video/mp4",
+            ".webm" => "video/webm",
+            _ => "image/jpeg"
+        };
         if (new FileExtensionContentTypeProvider().TryGetContentType(safeName, out var detected))
             contentType = detected;
 
@@ -988,6 +991,12 @@ public class ReportsController : AppControllerBase
         if (DateTime.TryParse(value, out dt))
             return dt;
         return null;
+    }
+
+    private static string? VideoExtension(string? fileName)
+    {
+        var extension = Path.GetExtension(fileName)?.ToLowerInvariant();
+        return extension is ".mp4" or ".webm" ? extension : null;
     }
 
     private static string? ExtractVideoFileName(string? details) =>

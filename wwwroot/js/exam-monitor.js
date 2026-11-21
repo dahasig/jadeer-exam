@@ -324,7 +324,7 @@ async function recordShortVideoClip(maxMs = 8000) {
                     resolve(null);
                     return;
                 }
-                const blobType = recorder.mimeType || mime || "video/webm";
+                const blobType = chunks[0].type || recorder.mimeType || mime || "application/octet-stream";
                 const blob = new Blob(chunks, { type: blobType });
                 if (blob.size < 800) {
                     resolve(null);
@@ -353,12 +353,15 @@ function pickEvidenceMimeType(preferAudio) {
     const withAudio = [
         "video/webm;codecs=vp8,opus",
         "video/webm;codecs=vp9,opus",
-        "video/webm;codecs=h264,opus",
-        "video/webm"
+        "video/webm",
+        "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+        "video/mp4"
     ];
     const videoOnly = [
         "video/webm;codecs=vp8",
-        "video/webm"
+        "video/webm",
+        "video/mp4;codecs=avc1.42E01E",
+        "video/mp4"
     ];
     const list = preferAudio ? withAudio : videoOnly;
     for (const m of list) {

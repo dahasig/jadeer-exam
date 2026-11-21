@@ -20,7 +20,7 @@ public static class FileUploadSecurity
     {
         [Category.Image] = new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".webp", ".gif" },
         [Category.Excel] = new(StringComparer.OrdinalIgnoreCase) { ".xlsx", ".xls" },
-        [Category.Video] = new(StringComparer.OrdinalIgnoreCase) { ".webm" }
+        [Category.Video] = new(StringComparer.OrdinalIgnoreCase) { ".webm", ".mp4" }
     };
 
     private static readonly Dictionary<Category, HashSet<string>> Mime = new()
@@ -37,7 +37,7 @@ public static class FileUploadSecurity
         },
         [Category.Video] = new(StringComparer.OrdinalIgnoreCase)
         {
-            "video/webm", "application/octet-stream"
+            "video/webm", "video/mp4", "application/octet-stream"
         }
     };
 
@@ -124,7 +124,7 @@ public static class FileUploadSecurity
         }
         else if (category == Category.Video)
         {
-            if (!StartsWith(data, Webm))
+            if (DetectVideoExtension(data) == null)
             {
                 throw new ArgumentException("file_magic");
             }
@@ -170,9 +170,24 @@ public static class FileUploadSecurity
                 _ => false
             },
             Category.Excel => StartsWith(data, Zip) || StartsWith(data, Ole),
-            Category.Video => StartsWith(data, Webm),
+            Category.Video => DetectVideoExtension(data) == ext,
             _ => false
         };
+
+    public static string? DetectVideoExtension(byte[] data)
+    {
+        if (StartsWith(data, Webm))
+            return ".webm";
+
+        if (data.Length >= 16 && data.AsSpan(4, 4).SequenceEqual("ftyp"u8))
+        {
+            var boxSize = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(data);
+            if (boxSize >= 16 && boxSize <= data.Length)
+                return ".mp4";
+        }
+
+        return null;
+    }
 
     private static string ExtensionOf(string name)
     {

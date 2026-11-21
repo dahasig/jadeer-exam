@@ -204,7 +204,7 @@ public class MonitoringService
 
         var d = details;
         d = Regex.Replace(d, @"(?i)[A-Za-z]:\\[^|]+", "[ملف]", RegexOptions.None, TimeSpan.FromMilliseconds(250));
-        d = Regex.Replace(d, @"/[^|]+\.(jpg|webm|png)", "[ملف]", RegexOptions.IgnoreCase,
+        d = Regex.Replace(d, @"/[^|]+\.(jpg|webm|mp4|png)", "[ملف]", RegexOptions.IgnoreCase,
             TimeSpan.FromMilliseconds(250));
         var pipe = d.IndexOf(" | ", StringComparison.Ordinal);
         if (pipe > 0 && d.Length > 100)
@@ -232,7 +232,8 @@ public class MonitoringService
         var details = e.Details ?? "";
         if (details.Contains("لقطة مراقبة", StringComparison.Ordinal)
             || details.Contains(".jpg", StringComparison.Ordinal)
-            || details.Contains(".webm", StringComparison.Ordinal))
+            || details.Contains(".webm", StringComparison.Ordinal)
+            || details.Contains(".mp4", StringComparison.Ordinal))
         {
             rank += 10;
         }
@@ -376,7 +377,7 @@ public class MonitoringService
 
         if (video != null)
         {
-            var path = Path.Combine(dir, stem + ".webm");
+            var path = Path.Combine(dir, stem + FileUploadSecurity.DetectVideoExtension(video));
             WriteMedia(path, video);
             details.Append(" | فيديو توثيق: ").Append(path);
         }
