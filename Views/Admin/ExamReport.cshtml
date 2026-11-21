@@ -21,10 +21,30 @@
             <a class="btn-outline" asp-controller="Reports" asp-action="ExportExamExcel" asp-route-id="@exam.Id">@Localizer["exam.report.export.xlsx"]</a>
             <a class="btn-outline" asp-controller="Reports" asp-action="ExportExamPdf" asp-route-id="@exam.Id">@Localizer["exam.report.export.pdf"]</a>
         </span>
+        @if (User.IsInRole("ADMIN"))
+        {
+            <form method="post" asp-controller="Reports" asp-action="DeleteExamMedia" asp-route-id="@exam.Id"
+                  data-confirm-msg="@Localizer["reports.evidence.deleteConfirm"]"
+                  onsubmit="return confirm(this.dataset.confirmMsg);">
+                <button class="btn-outline" type="submit">@Localizer["reports.evidence.deleteMedia"]</button>
+            </form>
+        }
         <button class="btn-outline" type="button" onclick="window.print()">@Localizer["exam.report.print"]</button>
     </div>
 </header>
 <div class="page-content">
+    @if (TempData["EvidenceMediaDeleted"] is int deleted)
+    {
+        <p class="form-success no-print" role="status">@Localizer["reports.evidence.deleted", deleted]</p>
+    }
+    @if (TempData["EvidenceMediaFailed"] is int failed && failed > 0)
+    {
+        <p class="form-error no-print" role="alert">@Localizer["reports.evidence.deleteFailed", failed]</p>
+    }
+    @if (TempData["EvidenceMediaShared"] is int shared && shared > 0)
+    {
+        <p class="no-print" role="status">@Localizer["reports.evidence.shared", shared]</p>
+    }
     <section class="card panel">
         <h2>@Localizer["exam.report.results"]</h2>
         <div class="table-shell">

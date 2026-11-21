@@ -320,6 +320,12 @@ public class MonitoringService
                 && (username == null || e.Username == username))
             .OrderBy(e => e.EventTime).ThenBy(e => e.Id).ToList();
 
+    public IEnumerable<string> MediaDetailsOutsideExam(long examId) =>
+        _db.SuspiciousEvents.AsNoTracking()
+            .Where(e => (e.ExamId == null || e.ExamId != examId) && e.Details != null
+                && (e.Details.Contains("لقطة مراقبة محفوظة:") || e.Details.Contains("فيديو توثيق:")))
+            .Select(e => e.Details!).AsEnumerable();
+
     public bool HasMediaReference(long examId, string fileName)
     {
         return _db.SuspiciousEvents.AsNoTracking()

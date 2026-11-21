@@ -364,6 +364,75 @@ public class ReportsController : AppControllerBase
         return View("~/Views/Admin/AttemptTimeline.cshtml");
     }
 
+    [HttpPost("reports/exam/{id:long}/delete-media")]
+    [Authorize(Roles = "ADMIN")]
+    [ValidateAntiForgeryToken]
+    public IActionResult DeleteExamMedia([FromRoute(Name = "id")] long examId)
+    {
+        if (!_examService.CanManageExam(CurrentUsername, examId))
+            return Forbid();
+        if (_examService.GetExam(examId) == null)
+            return NotFound();
+
+        var files = _monitoringService.EventsForExam(examId)
+            .SelectMany(e => EvidenceFileNames(e.Details))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        // Older filenames did not include the exam ID and could be shared across records.
+        var scopedNames = new Regex(
+            $"^{examId.ToString(CultureInfo.InvariantCulture)}_[0-9a-f]{{64}}_[0-9a-f]{{32}}[.](jpg|webm)$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var legacy = files.Where(name => !scopedNames.IsMatch(name)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var shared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (legacy.Count > 0)
+        {
+            foreach (var details in _monitoringService.MediaDetailsOutsideExam(examId))
+                foreach (var name in EvidenceFileNames(details))
+                    if (legacy.Contains(name))
+                        shared.Add(name);
+        }
+
+        // Event rows hold the original monitoring notes and are intentionally left in the database.
+        var deleted = 0;
+        var failed = 0;
+        var directory = MonitoringService.SnapshotDirectory;
+        foreach (var name in files)
+        {
+            if (shared.Contains(name))
+                continue;
+
+            try
+            {
+                var path = SafePath.ResolveUnder(directory, name);
+                var file = new FileInfo(path);
+                if (!file.Exists)
+                    continue;
+                file.Delete();
+                deleted++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                failed++;
+            }
+        }
+
+        TempData["EvidenceMediaDeleted"] = deleted;
+        TempData["EvidenceMediaFailed"] = failed;
+        TempData["EvidenceMediaShared"] = shared.Count;
+        return RedirectToAction(nameof(ExamReport), new { id = examId });
+    }
+
+    private static IEnumerable<string> EvidenceFileNames(string? details)
+    {
+        var image = ExtractSnapshotFileName(details);
+        if (image?.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) == true)
+            yield return image;
+        var video = ExtractVideoFileName(details);
+        if (video?.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) == true)
+            yield return video;
+    }
+
     [HttpGet("reports/exam/{id:long}/evidence.zip")]
     public Task<IActionResult> ExportExamEvidence([FromRoute(Name = "id")] long examId, CancellationToken cancellationToken)
     {
