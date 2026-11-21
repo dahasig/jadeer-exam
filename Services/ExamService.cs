@@ -11,7 +11,7 @@ namespace Jadeer.Exam.Services;
 
 using ExamEntity = global::Jadeer.Exam.Models.Exam;
 
-public class ExamService
+public partial class ExamService
 {
     public const string InstitutionalDemoTitle = "اختبار الذكاء التحليلي المؤسسي (تجربة)";
     private const string InstitutionalDemoTitleLegacy = "اختبار الذكاء التحليلي المؤسسي";
@@ -365,10 +365,17 @@ public class ExamService
         var totalSeconds = Math.Max(0, (exam.DurationMinutes ?? 0) * 60);
         var usedSeconds = 0;
         var usedMarks = 0;
-        foreach (var q in _db.Questions.Where(q => q.ExamId == examId))
+        if (exam.RandomQuestionCount is int count)
         {
-            if (q.DurationSeconds != null) usedSeconds += q.DurationSeconds.Value;
-            if (q.Mark != null) usedMarks += q.Mark.Value;
+            (usedSeconds, usedMarks) = DrawBudget(ReadBank(examId), count);
+        }
+        else
+        {
+            foreach (var q in _db.Questions.Where(q => q.ExamId == examId))
+            {
+                usedSeconds += q.DurationSeconds ?? 0;
+                usedMarks += q.Mark ?? 0;
+            }
         }
         var totalMarks = exam.TotalMarks;
         var practicalReserved = PracticalReservedMarks(exam);
@@ -412,10 +419,11 @@ public class ExamService
         if (!CanManageExam(staffUsername, examId))
             throw new ArgumentException("forbidden");
         var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
+        EnsureBankEditable(exam);
         if (practicalEnabled)
         {
             ApplyPracticalSettings(exam, true, practicalMaxMarks);
-            var used = _db.Questions.Where(q => q.ExamId == examId).Sum(q => q.Mark ?? 0);
+            var used = ExamQuestionBudget(examId).UsedMarks;
             var total = exam.TotalMarks ?? 0;
             if (used > total - PracticalReservedMarks(exam))
                 throw new ArgumentException("questions_exceed_online_budget");
@@ -530,10 +538,10 @@ public class ExamService
         var seconds = durationSeconds == null || durationSeconds < 10 ? 0 : durationSeconds.Value;
         if (seconds < 10)
             throw new ArgumentException("وقت السؤال مطلوب");
-        var budgetError = ValidateQuestionBudget(examId, mark.Value, seconds);
+        var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
+        var budgetError = ValidateBankQuestion(exam, null, mark.Value, seconds, essayQuestion == true);
         if (budgetError != null)
             throw new ArgumentException(budgetError);
-        var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
         var question = new Question
         {
             Exam = exam,
@@ -578,7 +586,7 @@ public class ExamService
         var seconds = durationSeconds == null || durationSeconds < 10 ? 0 : durationSeconds.Value;
         if (seconds < 10)
             throw new ArgumentException("وقت السؤال مطلوب");
-        var budgetError = ValidateQuestionBudgetForUpdate(examId, questionId, mark.Value, seconds);
+        var budgetError = ValidateBankQuestion(question.Exam, questionId, mark.Value, seconds, essayQuestion == true);
         if (budgetError != null)
             throw new ArgumentException(budgetError);
         var essay = essayQuestion == true;
@@ -613,6 +621,7 @@ public class ExamService
                        ?? throw new KeyNotFoundException();
         if (question.Exam == null || question.Exam.Id != examId)
             throw new ArgumentException("forbidden");
+        EnsureBankEditable(question.Exam);
         ClearQuestionImage(question, examId);
         _db.Questions.Remove(question);
         _db.SaveChanges();
@@ -715,10 +724,18 @@ public class ExamService
 
     public ExamAttempt SaveDraft(long examId, string username, string answersJson)
     {
+        var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
+        return exam.RandomQuestionCount == null ? SaveDraft(exam, username, answersJson)
+            : WithDrawLock(examId, () => SaveDraft(exam, username, answersJson));
+    }
+
+    private ExamAttempt SaveDraft(ExamEntity exam, string username, string answersJson)
+    {
+        var examId = exam.Id;
         var attempt = FindOpenAttempt(examId, username);
+        answersJson = RestrictDrawAnswers(exam, attempt, answersJson);
         if (attempt == null)
         {
-            var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
             attempt = new ExamAttempt { Exam = exam, ExamId = examId, CandidateUsername = username };
             _db.ExamAttempts.Add(attempt);
         }
@@ -731,7 +748,15 @@ public class ExamService
     public ExamAttempt SubmitAttempt(long examId, string username, string answersJson)
     {
         var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
+        return exam.RandomQuestionCount == null ? SubmitAttempt(exam, username, answersJson)
+            : WithDrawLock(examId, () => SubmitAttempt(exam, username, answersJson));
+    }
+
+    private ExamAttempt SubmitAttempt(ExamEntity exam, string username, string answersJson)
+    {
+        var examId = exam.Id;
         var attempt = FindOpenAttempt(examId, username);
+        answersJson = RestrictDrawAnswers(exam, attempt, answersJson);
         if (attempt == null)
         {
             attempt = new ExamAttempt { Exam = exam, ExamId = examId, CandidateUsername = username };
@@ -1000,6 +1025,8 @@ public class ExamService
     public int ImportQuestionsFromExcel(long examId, IFormFile file)
     {
         var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
+        EnsureBankEditable(exam);
+        var pendingBank = exam.RandomQuestionCount.HasValue ? ReadBank(examId) : null;
         var imported = 0;
         try
         {
@@ -1057,7 +1084,8 @@ public class ExamService
 
                 var seconds = durationSeconds == null || durationSeconds < 10 ? 0 : durationSeconds.Value;
                 if (seconds < 10) continue;
-                if (ValidateQuestionBudget(examId, mark, seconds) != null) continue;
+                if (pendingBank == null && ValidateQuestionBudget(examId, mark, seconds) != null) continue;
+                pendingBank?.Add(new BankQuestion(essay, mark, seconds));
 
                 var question = new Question
                 {
@@ -1085,6 +1113,12 @@ public class ExamService
                 }
                 _db.Questions.Add(question);
                 imported++;
+            }
+            if (pendingBank != null)
+            {
+                var error = DrawError(exam, pendingBank, complete: false);
+                if (error != null)
+                    throw new InvalidOperationException(error);
             }
             _db.SaveChanges();
         }
@@ -1457,7 +1491,7 @@ public class ExamService
             var awarded = ParseEssayAwarded(attempt?.EssayScoreJson);
             var answerRows = new List<Dictionary<string, object?>>();
             var qNum = 0;
-            foreach (var q in questions)
+            foreach (var q in QuestionsForReport(questions, attempt))
             {
                 qNum++;
                 var idKey = q.Id.ToString(CultureInfo.InvariantCulture);
@@ -1620,6 +1654,8 @@ public class ExamService
         if (examId == null || CountQuestions(examId.Value) < 1) return false;
         var exam = _db.Exams.Find(examId.Value);
         if (exam == null) return false;
+        if (exam.RandomQuestionCount != null)
+            return DrawError(exam, ReadBank(exam.Id), complete: true) == null;
         var budget = ExamQuestionBudget(examId.Value);
         if (exam.DurationMinutes is > 0 && budget.RemainingSeconds > 0) return false;
         if (exam.TotalMarks is > 0 && budget.RemainingMarks is > 0) return false;
@@ -1644,8 +1680,11 @@ public class ExamService
     public int PublishExam(long examId)
     {
         var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
-        if (CountQuestions(examId) < 1)
-            throw new InvalidOperationException("لا يمكن اعتماد اختبار بلا أسئلة");
+        if (CountQuestions(examId) < 1 && exam.RandomQuestionCount == null)
+            throw new ArgumentException("لا يمكن اعتماد اختبار بلا أسئلة");
+        var error = exam.RandomQuestionCount == null ? null : DrawError(exam, ReadBank(examId), complete: true);
+        if (error != null)
+            throw new ArgumentException(error);
         _examNotificationService.ValidateReadyForPublish(exam);
         exam.Published = true;
         _db.SaveChanges();
@@ -1668,6 +1707,7 @@ public class ExamService
             opportunityType, jobTitle, companyName, city, opportunityYear, totalMarks, passThreshold,
             usePractical, practicalMarks);
         exam.CreationMode = "TEMPLATE";
+        exam.RandomQuestionCount = template.RandomQuestionCount;
         exam.TotalMarks = template.TotalMarks ?? totalMarks;
         exam.PassThreshold = template.PassThreshold > 0 ? template.PassThreshold : 70;
         if (template.PracticalEnabled)

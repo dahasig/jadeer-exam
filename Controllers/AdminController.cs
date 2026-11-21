@@ -241,9 +241,30 @@ public class AdminController : AppControllerBase
         }
         catch (ArgumentException ex)
         {
-            var err = ex.Message.Contains("budget", StringComparison.OrdinalIgnoreCase)
-                ? "practical_budget" : "practical";
+            var err = ex.Message == "draw_locked" ? "draw_locked"
+                : ex.Message.Contains("budget", StringComparison.OrdinalIgnoreCase) ? "practical_budget" : "practical";
             return Redirect($"/admin/operations?view=create&tab=candidates&examId={examId}&error={err}");
+        }
+    }
+
+    [HttpPost("exams/{id:long}/random-question-count")]
+    [ValidateAntiForgeryToken]
+    public IActionResult SetRandomQuestionCount(long id, int? randomQuestionCount)
+    {
+        if (!IsStaff || !_examService.CanManageExam(CurrentUsername, id))
+            return Forbid();
+        var url = $"/admin/operations?view=create&tab=questions&examId={id}&qtype=mcq";
+        if (!ModelState.IsValid)
+            return Redirect(url + "&error=draw_count");
+
+        try
+        {
+            _examService.UpdateRandomQuestionCount(id, randomQuestionCount);
+            return Redirect(url + "&draw_saved=1");
+        }
+        catch (ArgumentException ex) when (ex.Message is "draw_count" or "draw_locked")
+        {
+            return Redirect(url + "&error=" + ex.Message);
         }
     }
 
@@ -264,7 +285,8 @@ public class AdminController : AppControllerBase
         }
         catch (ArgumentException ex)
         {
-            var err = ex.Message.Contains("schedule", StringComparison.OrdinalIgnoreCase) ? "schedule" : "publish";
+            var err = ex.Message.StartsWith("draw_", StringComparison.Ordinal) ? ex.Message
+                : ex.Message.Contains("schedule", StringComparison.OrdinalIgnoreCase) ? "schedule" : "publish";
             return Redirect($"/admin/operations?view=create&tab=candidates&examId={examId}&error={err}");
         }
     }
@@ -420,7 +442,14 @@ public class AdminController : AppControllerBase
     {
         if (!_examService.CanManageExam(CurrentUsername, examId))
             return Redirect("/dashboard");
-        _examService.DeleteQuestionFromExam(examId, qid);
+        try
+        {
+            _examService.DeleteQuestionFromExam(examId, qid);
+        }
+        catch (ArgumentException ex) when (ex.Message == "draw_locked")
+        {
+            return Redirect($"/admin/operations?view=create&tab=questions&examId={examId}&error=draw_locked");
+        }
         var count = _examService.CountQuestions(examId);
         return Redirect($"/admin/operations?view=create&tab=questions&examId={examId}&deleted=1&qcount={count}");
     }
@@ -482,6 +511,10 @@ public class AdminController : AppControllerBase
                 var count = _examService.CountQuestions(examId);
                 return Redirect($"/admin/operations?view=create&tab=questions&examId={examId}&qcount={count}");
             }
+            catch (Exception ex) when (ex.Message is "draw_locked" or "draw_time" or "draw_marks" or "draw_equal_marks")
+            {
+                return Redirect($"/admin/operations?view=create&tab=questions&examId={examId}&error={ex.Message}");
+            }
             catch
             {
                 return Redirect($"/admin/operations?view=create&tab=questions&examId={examId}&error=file");
@@ -508,6 +541,7 @@ public class AdminController : AppControllerBase
     private static string MapQuestionError(string? msg)
     {
         if (string.IsNullOrEmpty(msg)) return "fields";
+        if (msg is "draw_locked" or "draw_time" or "draw_marks" or "draw_equal_marks") return msg;
         if (msg.Contains("time", StringComparison.OrdinalIgnoreCase) || msg.Contains("وقت", StringComparison.Ordinal))
             return "time";
         if (msg.Contains("marks", StringComparison.OrdinalIgnoreCase) || msg.Contains("درجة", StringComparison.Ordinal))

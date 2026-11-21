@@ -301,6 +301,10 @@
                 <button class="btn-primary" type="submit" style="width:100%">@Localizer["ops.finishSetup"]</button>
             </form>
         }
+        @if (Q("error").StartsWith("draw_", StringComparison.Ordinal))
+        {
+            <p class="form-error">@Localizer["ops.draw." + Q("error")]</p>
+        }
         @if (Q("error") == "publish")
         {
             <p class="form-error">@Localizer["ops.error.publish"]</p>

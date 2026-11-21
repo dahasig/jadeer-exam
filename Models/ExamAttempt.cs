@@ -16,5 +16,6 @@ public class ExamAttempt
     public int? PracticalScore { get; set; }
     public bool Suspicious { get; set; }
     public string? AnswersJson { get; set; }
+    public string? SelectedQuestionIdsJson { get; set; }
     public string? EssayScoreJson { get; set; }
 }

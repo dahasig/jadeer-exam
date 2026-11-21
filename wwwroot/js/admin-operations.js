@@ -210,6 +210,7 @@ function selectedExamBudget() {
         return null;
     }
     return {
+        randomBank: opt.dataset.randomBank === "true",
         totalSeconds: Number(opt.dataset.totalSeconds || 0),
         remainingSeconds: Number(opt.dataset.remainingSeconds || 0),
         totalMarks: opt.dataset.totalMarks === "" || opt.dataset.totalMarks == null
@@ -224,7 +225,7 @@ function selectedExamBudget() {
 function updateQuestionBudgetUi() {
     const budget = selectedExamBudget();
     document.querySelectorAll("#mcqQuestionForm input[name='mark'], #essayQuestionForm input[name='mark']").forEach((input) => {
-        if (budget?.remainingMarks != null) {
+        if (budget?.remainingMarks != null && !budget.randomBank) {
             input.max = String(Math.max(1, budget.remainingMarks));
         } else {
             input.removeAttribute("max");
@@ -243,6 +244,7 @@ function validateQuestionAgainstBudget(form) {
     if (seconds == null) {
         return "duration";
     }
+    if (budget.randomBank) return null;
     if (seconds > budget.remainingSeconds) {
         return "time";
     }

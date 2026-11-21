@@ -65,10 +65,16 @@
 
 <main class="card exam-panel">
     <p id="lastQuestionNote" class="exam-last-question-note hidden" role="status">@Localizer["exam.lastNote"]</p>
-    @{ var st = 0; }
+    @{
+        var st = 0;
+        var draftAnswers = ViewBag.DraftAnswers as Dictionary<string, System.Text.Json.JsonElement>;
+    }
     @foreach (dynamic q in qList)
     {
         st++;
+        var questionKey = ((long)q.Id).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var savedAnswer = draftAnswers != null && draftAnswers.TryGetValue(questionKey, out var draftAnswer)
+            ? draftAnswer.ToString() : "";
         <div class="question-block"
              data-question-id="@q.Id"
              data-duration-seconds="@q.DurationSeconds"
@@ -88,7 +94,7 @@
             @if (q.Essay == true)
             {
                 <div>
-                    <textarea name="essay-@q.Id" class="essay-answer" rows="5" placeholder="@Localizer["exam.essay.placeholder"]"></textarea>
+                    <textarea name="essay-@q.Id" class="essay-answer" rows="5" placeholder="@Localizer["exam.essay.placeholder"]">@savedAnswer</textarea>
                 </div>
             }
             else
@@ -97,7 +103,7 @@
                     @if (q.OptionA != null && !string.IsNullOrEmpty((string)q.OptionA))
                     {
                         <label class="exam-option">
-                            <input type="radio" name="q-@q.Id" value="A">
+                            <input type="radio" name="q-@q.Id" value="A" checked="@(savedAnswer == "A")">
                             <span class="exam-option-letter">@(isEnglish ? "A" : "أ")</span>
                             <span class="exam-option-text">@q.OptionA</span>
                         </label>
@@ -105,7 +111,7 @@
                     @if (q.OptionB != null && !string.IsNullOrEmpty((string)q.OptionB))
                     {
                         <label class="exam-option">
-                            <input type="radio" name="q-@q.Id" value="B">
+                            <input type="radio" name="q-@q.Id" value="B" checked="@(savedAnswer == "B")">
                             <span class="exam-option-letter">@(isEnglish ? "B" : "ب")</span>
                             <span class="exam-option-text">@q.OptionB</span>
                         </label>
@@ -113,7 +119,7 @@
                     @if (q.OptionC != null && !string.IsNullOrEmpty((string)q.OptionC))
                     {
                         <label class="exam-option">
-                            <input type="radio" name="q-@q.Id" value="C">
+                            <input type="radio" name="q-@q.Id" value="C" checked="@(savedAnswer == "C")">
                             <span class="exam-option-letter">@(isEnglish ? "C" : "ج")</span>
                             <span class="exam-option-text">@q.OptionC</span>
                         </label>
@@ -121,7 +127,7 @@
                     @if (q.OptionD != null && !string.IsNullOrEmpty((string)q.OptionD))
                     {
                         <label class="exam-option">
-                            <input type="radio" name="q-@q.Id" value="D">
+                            <input type="radio" name="q-@q.Id" value="D" checked="@(savedAnswer == "D")">
                             <span class="exam-option-letter">@(isEnglish ? "D" : "د")</span>
                             <span class="exam-option-text">@q.OptionD</span>
                         </label>

@@ -282,6 +282,7 @@
                                 || (selectedExamId == null && effectiveExamId != null && Equals(effectiveExamId, exam.Id));
                             <option value="@exam.Id"
                                     selected="@(selected ? "selected" : null)"
+                                    data-random-bank="@(exam.RandomQuestionCount != null ? "true" : "false")"
                                     data-total-seconds="@(budget != null ? ((dynamic)budget).TotalSeconds : 0)"
                                     data-remaining-seconds="@(budget != null ? ((dynamic)budget).RemainingSeconds : 0)"
                                     data-total-marks="@(budget != null ? ((dynamic)budget).TotalMarks : "")"
@@ -290,6 +291,27 @@
                     }
                 </select>
 
+                @if (setupExam != null)
+                {
+                    @if (Has("draw_saved")) { <p class="form-success">@Localizer["ops.draw.saved"]</p> }
+                    @if (Context.Request.Query["error"].ToString().StartsWith("draw_", StringComparison.Ordinal))
+                    {
+                        <p class="form-error">@Localizer["ops.draw." + Context.Request.Query["error"].ToString()]</p>
+                    }
+                    @if (setupExam.Published != true)
+                    {
+                        <form class="admin-form" method="post" asp-controller="Admin" asp-action="SetRandomQuestionCount" asp-route-id="@setupExam.Id">
+                            <label for="randomQuestionCount">@Localizer["ops.draw.count"]</label>
+                            <input type="number" id="randomQuestionCount" name="randomQuestionCount" min="1" value="@setupExam.RandomQuestionCount">
+                            <small>@Localizer["ops.draw.help"]</small>
+                            <button type="submit" class="btn-outline">@Localizer["ops.practical.save"]</button>
+                        </form>
+                    }
+                    else if (setupExam.RandomQuestionCount != null)
+                    {
+                        <p>@Localizer["ops.draw.active", (object)setupExam.RandomQuestionCount]</p>
+                    }
+                }
                 <div class="question-type-tabs">
                     <div class="ux-tab-bar ops-qtype-bar" role="tablist">
                         <a class="ux-tab@(questionTypeTab == "mcq" ? " is-active" : "")"
@@ -501,5 +523,5 @@
         hour: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["ops.q.duration.unit.hours"].Value))
     };
 </script>
-<script defer src="~/js/admin-operations.js?v=@assetsVersion"></script>
+<script defer src="~/js/admin-operations.js" asp-append-version="true"></script>
 }

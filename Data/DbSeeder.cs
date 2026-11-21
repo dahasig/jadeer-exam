@@ -24,6 +24,7 @@ public static class DbSeeder
                 var hasher = scope.ServiceProvider.GetRequiredService<PasswordHasher<UserAccount>>();
 
                 db.Database.EnsureCreated();
+                EnsureRandomQuestionColumns(db);
                 WidenAnswerColumns(db, logger);
                 SeedUsersOnly(db, hasher);
                 logger?.LogInformation("Database ready (attempt {Attempt}/{Max}).", attempt, maxAttempts);
@@ -50,6 +51,19 @@ public static class DbSeeder
         SeedUser(db, hasher, "examiner", "Examiner User", "Examiner@123", Role.EXAMINER);
         SeedUser(db, hasher, "grader", "Grader User", "Grader@123", Role.GRADER);
         SeedUser(db, hasher, "candidate", "Candidate User", "Candidate@123", Role.CANDIDATE);
+    }
+
+    private static void EnsureRandomQuestionColumns(AppDbContext db)
+    {
+        if (db.Database.SqlQueryRaw<long>(
+                "SELECT CAST(COUNT(*) AS SIGNED) AS Value FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exams' AND COLUMN_NAME = 'RandomQuestionCount'")
+            .AsEnumerable().Single() == 0)
+            db.Database.ExecuteSqlRaw("ALTER TABLE exams ADD COLUMN RandomQuestionCount INT NULL");
+
+        if (db.Database.SqlQueryRaw<long>(
+                "SELECT CAST(COUNT(*) AS SIGNED) AS Value FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exam_attempts' AND COLUMN_NAME = 'SelectedQuestionIdsJson'")
+            .AsEnumerable().Single() == 0)
+            db.Database.ExecuteSqlRaw("ALTER TABLE exam_attempts ADD COLUMN SelectedQuestionIdsJson LONGTEXT NULL");
     }
 
     /// <summary>Allow full essay/MCQ answer payloads (was VARCHAR 4000).</summary>

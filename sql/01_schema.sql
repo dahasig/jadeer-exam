@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS exams (
   AssignedGraderId BIGINT NULL,
   DurationMinutes INT NULL,
   Randomized TINYINT(1) NOT NULL DEFAULT 1,
+  RandomQuestionCount INT NULL,
   OpportunityType LONGTEXT NULL,
   JobTitle LONGTEXT NULL,
   CompanyName LONGTEXT NULL,
@@ -132,6 +133,7 @@ CREATE TABLE IF NOT EXISTS exam_attempts (
   Suspicious TINYINT(1) NOT NULL DEFAULT 0,
   AnswersJson LONGTEXT NULL,
   EssayScoreJson LONGTEXT NULL,
+  SelectedQuestionIdsJson LONGTEXT NULL,
   PRIMARY KEY (Id),
   KEY IX_exam_attempts_ExamId (ExamId),
   CONSTRAINT FK_exam_attempts_exams_ExamId

@@ -138,7 +138,17 @@ public class ExamController : AppControllerBase
         if (exam == null) return NotFound();
 
         ViewBag.Exam = exam;
-        ViewBag.Questions = _examService.GetExamQuestions(examId, exam.Randomized);
+        try
+        {
+            var (questions, draft) = _examService.GetCandidateQuestions(exam, username);
+            ViewBag.Questions = questions;
+            ViewBag.DraftAnswers = draft == null ? null
+                : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(draft);
+        }
+        catch (ArgumentException ex) when (ex.Message.StartsWith("draw_", StringComparison.Ordinal))
+        {
+            return Redirect("/dashboard");
+        }
         ViewBag.IsEnglish = string.Equals(ViewData["PageLang"] as string, "en", StringComparison.OrdinalIgnoreCase);
         return View("~/Views/Exam/Index.cshtml");
     }
@@ -169,7 +179,14 @@ public class ExamController : AppControllerBase
         var answers = payload != null && payload.TryGetValue("answers", out var a)
             ? a.ToString()
             : "{}";
-        _examService.SaveDraft(examId, username, answers);
+        try
+        {
+            _examService.SaveDraft(examId, username, answers);
+        }
+        catch (ArgumentException ex) when (ex.Message == "draw_attempt_missing")
+        {
+            return Conflict(new { status = ex.Message });
+        }
         return Ok(new { status = "saved" });
     }
 
@@ -187,7 +204,15 @@ public class ExamController : AppControllerBase
         var answers = payload != null && payload.TryGetValue("answers", out var a)
             ? a.ToString()
             : "{}";
-        var attempt = _examService.SubmitAttempt(examId, username, answers);
+        ExamAttempt attempt;
+        try
+        {
+            attempt = _examService.SubmitAttempt(examId, username, answers);
+        }
+        catch (ArgumentException ex) when (ex.Message == "draw_attempt_missing")
+        {
+            return Conflict(new { status = ex.Message });
+        }
         HttpContext.Session.Remove(PrecheckKey(username, examId));
         return Ok(new { status = "submitted", score = attempt.Score });
     }

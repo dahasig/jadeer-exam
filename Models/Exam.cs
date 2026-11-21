@@ -17,6 +17,7 @@ public class Exam
 
     public int? DurationMinutes { get; set; }
     public bool Randomized { get; set; } = true;
+    public int? RandomQuestionCount { get; set; }
     /** TRAINING | CONTRACT | RC */
     public string? OpportunityType { get; set; }
     public string? JobTitle { get; set; }

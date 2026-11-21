@@ -101,6 +101,7 @@ public class AppDbContext : DbContext
             e.ToTable("exam_attempts");
             e.HasKey(x => x.Id);
             e.Property(x => x.AnswersJson).HasColumnType("longtext");
+            e.Property(x => x.SelectedQuestionIdsJson).HasColumnType("longtext");
             e.Property(x => x.EssayScoreJson).HasColumnType("longtext");
             e.HasOne(x => x.Exam)
                 .WithMany()
