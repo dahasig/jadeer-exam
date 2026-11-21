@@ -13,6 +13,7 @@
         </p>
     </div>
     <div class="page-topbar-actions">
+        <a class="btn-outline" asp-controller="Reports" asp-action="ExportAttemptEvidence" asp-route-id="@attempt.Id">@Localizer["reports.evidence.downloadCandidate"]</a>
         <a class="btn-outline" asp-controller="Reports" asp-action="Reports">@Localizer["timeline.back"]</a>
     </div>
 </header>

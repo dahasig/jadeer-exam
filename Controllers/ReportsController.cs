@@ -1,4 +1,7 @@
-﻿using System.Globalization;
+using System.Globalization;
+using System.IO.Compression;
+using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Http.Features;
 using System.Text;
 using ClosedXML.Excel;
 using Jadeer.Exam.Models;
@@ -359,6 +362,150 @@ public class ReportsController : AppControllerBase
         ViewBag.TimelineRows = timeline;
         ViewData["ActiveNav"] = "reports";
         return View("~/Views/Admin/AttemptTimeline.cshtml");
+    }
+
+    [HttpGet("reports/exam/{id:long}/evidence.zip")]
+    public Task<IActionResult> ExportExamEvidence([FromRoute(Name = "id")] long examId, CancellationToken cancellationToken)
+    {
+        if (!IsStaff || !_examService.CanManageExam(CurrentUsername, examId))
+            return Task.FromResult<IActionResult>(Forbid());
+
+        return ExportEvidence(examId, null, $"exam-{examId}-evidence.zip", cancellationToken);
+    }
+
+    [HttpGet("reports/attempt/{id:long}/evidence.zip")]
+    public async Task<IActionResult> ExportAttemptEvidence([FromRoute(Name = "id")] long attemptId,
+        CancellationToken cancellationToken)
+    {
+        if (!IsStaff)
+            return Forbid();
+
+        var attempt = _examService.ListAttemptsForStaff(CurrentUsername).FirstOrDefault(a => a.Id == attemptId);
+        if (attempt?.Exam == null || string.IsNullOrWhiteSpace(attempt.CandidateUsername)
+            || !_examService.CanManageExam(CurrentUsername, attempt.Exam.Id))
+            return NotFound();
+
+        return await ExportEvidence(attempt.Exam.Id, attempt.CandidateUsername,
+            $"attempt-{attemptId}-evidence.zip", cancellationToken);
+    }
+
+    private async Task<IActionResult> ExportEvidence(long examId, string? username, string downloadName,
+        CancellationToken cancellationToken)
+    {
+        var groups = _monitoringService.EventsForExam(examId, username)
+            .GroupBy(e => e.Username ?? "")
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .ToList();
+
+        Response.ContentType = "application/zip";
+        Response.Headers.ContentDisposition = $"attachment; filename={downloadName}";
+        Response.Headers.CacheControl = "private, no-store";
+
+        // .NET 8 ZipArchive writes ZIP headers synchronously. Media payloads are copied asynchronously.
+        var bodyControl = HttpContext.Features.Get<IHttpBodyControlFeature>();
+        var previousSyncSetting = bodyControl?.AllowSynchronousIO;
+        if (bodyControl != null)
+            bodyControl.AllowSynchronousIO = true;
+
+        try
+        {
+            using var zip = new ZipArchive(Response.Body, ZipArchiveMode.Create, leaveOpen: true);
+            if (groups.Count == 0)
+                await WriteEvidenceNotes(zip, "notes.csv", [], cancellationToken);
+
+            for (var i = 0; i < groups.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var folder = $"candidate-{i + 1:D4}-{EvidenceFolderName(groups[i].Key)}/";
+                var rows = new List<string[]>();
+                foreach (var entry in groups[i])
+                {
+                    var image = ExtractSnapshotFileName(entry.Details);
+                    var video = ExtractVideoFileName(entry.Details);
+                    var imageExport = await CopyEvidenceFile(zip, folder, image, entry.Id, ".jpg", cancellationToken);
+                    var videoExport = await CopyEvidenceFile(zip, folder, video, entry.Id, ".webm", cancellationToken);
+                    var details = string.Join(" | ", (entry.Details ?? "").Split(" | ").Where(part =>
+                        !part.StartsWith("لقطة مراقبة محفوظة:", StringComparison.Ordinal)
+                        && !part.StartsWith("فيديو توثيق:", StringComparison.Ordinal)
+                        && !part.StartsWith("upload-id=", StringComparison.Ordinal)));
+                    rows.Add([
+                        entry.Username ?? "",
+                        entry.EventTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
+                        entry.EventType ?? "",
+                        _monitoringService.ToArabicEventType(entry.EventType),
+                        entry.Severity ?? "",
+                        entry.ConfidenceScore?.ToString(CultureInfo.InvariantCulture) ?? "",
+                        details,
+                        imageExport ?? "",
+                        videoExport ?? "",
+                        image != null && imageExport == null ? "missing" : "",
+                        video != null && videoExport == null ? "missing" : ""
+                    ]);
+                }
+                await WriteEvidenceNotes(zip, folder + "notes.csv", rows, cancellationToken);
+            }
+        }
+        finally
+        {
+            if (bodyControl != null && previousSyncSetting.HasValue)
+                bodyControl.AllowSynchronousIO = previousSyncSetting.Value;
+        }
+
+        return new EmptyResult();
+    }
+
+    private static async Task<string?> CopyEvidenceFile(ZipArchive zip, string folder, string? fileName,
+        long eventId, string extension, CancellationToken cancellationToken)
+    {
+        if (fileName == null || !fileName.EndsWith(extension, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        FileStream source;
+        try
+        {
+            var path = SafePath.ResolveUnder(MonitoringService.SnapshotDirectory, fileName);
+            source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 65536,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException
+                                   or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+
+        var name = $"{eventId}{extension}";
+        await using (source)
+        {
+            using var output = zip.CreateEntry(folder + name, CompressionLevel.NoCompression).Open();
+            await source.CopyToAsync(output, cancellationToken);
+        }
+        return name;
+    }
+
+    private static async Task WriteEvidenceNotes(ZipArchive zip, string name, IEnumerable<string[]> rows,
+        CancellationToken cancellationToken)
+    {
+        using var output = zip.CreateEntry(name, CompressionLevel.Fastest).Open();
+        await using var writer = new StreamWriter(output, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
+            leaveOpen: true);
+        await writer.WriteLineAsync(
+            "candidate,event_time,event_type,event_label_ar,severity,confidence,details,image,video,image_status,video_status"
+                .AsMemory(), cancellationToken);
+        foreach (var row in rows)
+        {
+            var line = string.Join(',', row.Select(value =>
+            {
+                var trimmed = value.TrimStart();
+                return CsvField(trimmed.Length > 0 && "=+-@".Contains(trimmed[0]) ? "'" + value : value);
+            }));
+            await writer.WriteLineAsync(line.AsMemory(), cancellationToken);
+        }
+    }
+
+    private static string EvidenceFolderName(string username)
+    {
+        var safe = Regex.Replace(username, @"[^\p{L}\p{N}_.-]", "_").Trim('.');
+        return safe.Length == 0 ? "unknown" : safe[..Math.Min(48, safe.Length)].TrimEnd('.');
     }
 
     [HttpGet("reports/exam/{id:long}/export.csv")]

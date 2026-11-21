@@ -15,6 +15,7 @@
     <div class="page-topbar-actions no-print">
         <a class="btn-outline" asp-controller="Reports" asp-action="Reports">@Localizer["exam.report.back"]</a>
         <span class="export-btn-group">
+            <a class="btn-outline" asp-controller="Reports" asp-action="ExportExamEvidence" asp-route-id="@exam.Id">@Localizer["reports.evidence.downloadAll"]</a>
             <a class="btn-outline" asp-controller="Reports" asp-action="CandidateAnswers" asp-route-id="@exam.Id">@Localizer["exam.answers.open"]</a>
             <a class="btn-outline" asp-controller="Reports" asp-action="ExportExamCsv" asp-route-id="@exam.Id">@Localizer["exam.report.export.csv"]</a>
             <a class="btn-outline" asp-controller="Reports" asp-action="ExportExamExcel" asp-route-id="@exam.Id">@Localizer["exam.report.export.xlsx"]</a>
