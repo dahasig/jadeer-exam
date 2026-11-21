@@ -9,12 +9,14 @@ namespace Jadeer.Exam.Services;
 
 public partial class ExamService
 {
-    public void UpdateRandomQuestionSettings(long examId, int? count, int? totalMarks, int? passThreshold)
+    public void UpdateRandomQuestionSettings(long examId, int? count, int? totalMarks, int? passThreshold, int? durationMinutes)
     {
         var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
         var total = totalMarks ?? exam.TotalMarks;
         var pass = passThreshold ?? exam.PassThreshold;
-        if (count == exam.RandomQuestionCount && total == exam.TotalMarks && pass == exam.PassThreshold)
+        var duration = durationMinutes ?? exam.DurationMinutes;
+        if (count == exam.RandomQuestionCount && total == exam.TotalMarks && pass == exam.PassThreshold
+            && duration == exam.DurationMinutes)
             return;
         if (count is <= 0)
             throw new ArgumentException("draw_count");
@@ -23,7 +25,11 @@ public partial class ExamService
 
         if (total is <= 0 || pass < 1 || (total.HasValue && pass > total.Value))
             throw new ArgumentException("draw_score_settings");
+        if (duration is <= 0 || duration > int.MaxValue / 60)
+            throw new ArgumentException("draw_duration_settings");
         var bank = ReadBank(examId);
+        if (duration is int minutes && DrawBudget(bank, count ?? bank.Count).Seconds > minutes * 60)
+            throw new ArgumentException("draw_time");
         if (count.HasValue && total is int configuredTotal
             && ObjectiveBudget(configuredTotal, PracticalReservedMarks(exam), bank) < 1)
             throw new ArgumentException("draw_marks");
@@ -34,6 +40,7 @@ public partial class ExamService
         exam.RandomQuestionCount = count;
         exam.TotalMarks = total;
         exam.PassThreshold = pass;
+        exam.DurationMinutes = duration;
         _db.SaveChanges();
     }
 

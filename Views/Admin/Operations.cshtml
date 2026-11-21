@@ -303,6 +303,9 @@
                         <form class="admin-form" method="post" asp-controller="Admin" asp-action="SetRandomQuestionCount" asp-route-id="@setupExam.Id">
                             <label for="randomQuestionCount">@Localizer["ops.draw.count"]</label>
                             <input type="number" id="randomQuestionCount" name="randomQuestionCount" min="1" value="@setupExam.RandomQuestionCount">
+                            <label for="drawDurationMinutes">@Localizer["ops.draw.duration"]
+                                <input type="number" id="drawDurationMinutes" name="drawDurationMinutes" min="1" value="@setupExam.DurationMinutes">
+                            </label>
                             <div class="form-grid-2">
                                 <label for="drawTotalMarks">@Localizer["ops.totalMarks.placeholder"]
                                     <input type="number" id="drawTotalMarks" name="drawTotalMarks" min="1" value="@setupExam.TotalMarks">
