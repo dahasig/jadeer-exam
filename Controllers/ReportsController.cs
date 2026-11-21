@@ -303,8 +303,9 @@ public class ReportsController : AppControllerBase
         detail.Cell(1, 6).Value = "Answer (full text)";
         detail.Cell(1, 7).Value = "Correct option";
         detail.Cell(1, 8).Value = "Is correct";
-        detail.Cell(1, 9).Value = "Marks";
-        detail.Cell(1, 10).Value = "Awarded";
+        var scaledDraw = exam.RandomQuestionCount != null && exam.TotalMarks != null;
+        detail.Cell(1, 9).Value = scaledDraw ? "Raw question marks" : "Marks";
+        detail.Cell(1, 10).Value = scaledDraw ? "Raw awarded marks" : "Awarded";
         var dr = 2;
         foreach (var c in candidates)
         {

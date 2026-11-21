@@ -9,17 +9,31 @@ namespace Jadeer.Exam.Services;
 
 public partial class ExamService
 {
-    public void UpdateRandomQuestionCount(long examId, int? count)
+    public void UpdateRandomQuestionSettings(long examId, int? count, int? totalMarks, int? passThreshold)
     {
         var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
-        if (count == exam.RandomQuestionCount)
+        var total = totalMarks ?? exam.TotalMarks;
+        var pass = passThreshold ?? exam.PassThreshold;
+        if (count == exam.RandomQuestionCount && total == exam.TotalMarks && pass == exam.PassThreshold)
             return;
         if (count is <= 0)
             throw new ArgumentException("draw_count");
         if (exam.Published || _db.ExamAttempts.Any(a => a.ExamId == examId))
             throw new ArgumentException("draw_locked");
 
+        if (total is <= 0 || pass < 1 || (total.HasValue && pass > total.Value))
+            throw new ArgumentException("draw_score_settings");
+        var bank = ReadBank(examId);
+        if (count.HasValue && total is int configuredTotal
+            && ObjectiveBudget(configuredTotal, PracticalReservedMarks(exam), bank) < 1)
+            throw new ArgumentException("draw_marks");
+        if (count == null && total is int fullTotal
+            && bank.Sum(q => q.Marks) > fullTotal - PracticalReservedMarks(exam))
+            throw new ArgumentException("draw_score_settings");
+
         exam.RandomQuestionCount = count;
+        exam.TotalMarks = total;
+        exam.PassThreshold = pass;
         _db.SaveChanges();
     }
 
@@ -71,19 +85,23 @@ public partial class ExamService
         if (bank.Any(q => q.Seconds < 10))
             return "draw_time";
 
-        var (seconds, marks) = DrawBudget(bank, count);
+        var (seconds, _) = DrawBudget(bank, count);
         if (seconds > (long)(exam.DurationMinutes ?? 0) * 60)
             return "draw_time";
 
-        if (exam.TotalMarks is int total)
-        {
-            var available = total - PracticalReservedMarks(exam);
-            if (marks > available || (complete && marks != available))
-                return "draw_marks";
-        }
+        if (exam.TotalMarks is int total && ObjectiveBudget(total, PracticalReservedMarks(exam), bank) < 1)
+            return "draw_marks";
 
         return null;
     }
+
+    private static int ObjectiveBudget(int totalMarks, int practicalMarks, IEnumerable<BankQuestion> bank) =>
+        totalMarks - practicalMarks - bank.Where(q => q.Essay).Sum(q => q.Marks);
+
+    // Round down to keep the displayed integer from crossing a passing threshold prematurely.
+    private static int NormalizeDrawScore(int rawScore, int rawMaximum, int targetMaximum) =>
+        rawMaximum <= 0 || targetMaximum <= 0 ? 0
+            : (int)((long)Math.Clamp(rawScore, 0, rawMaximum) * targetMaximum / rawMaximum);
 
     public (List<Question> Questions, string? Draft) GetCandidateQuestions(ExamEntity exam, string username)
     {

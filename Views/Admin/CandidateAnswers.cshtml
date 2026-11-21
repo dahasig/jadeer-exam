@@ -18,6 +18,10 @@
     </div>
 </header>
 <div class="page-content">
+    @if (exam?.RandomQuestionCount != null && exam?.TotalMarks != null)
+    {
+        <p class="muted">@Localizer["ops.draw.reportScale"]</p>
+    }
     @if (candidateRows == null || !candidateRows.Cast<object>().Any())
     {
         <section class="card panel">

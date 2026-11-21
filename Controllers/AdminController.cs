@@ -249,7 +249,7 @@ public class AdminController : AppControllerBase
 
     [HttpPost("exams/{id:long}/random-question-count")]
     [ValidateAntiForgeryToken]
-    public IActionResult SetRandomQuestionCount(long id, int? randomQuestionCount)
+    public IActionResult SetRandomQuestionCount(long id, int? randomQuestionCount, int? drawTotalMarks, int? drawPassThreshold)
     {
         if (!IsStaff || !_examService.CanManageExam(CurrentUsername, id))
             return Forbid();
@@ -259,10 +259,10 @@ public class AdminController : AppControllerBase
 
         try
         {
-            _examService.UpdateRandomQuestionCount(id, randomQuestionCount);
+            _examService.UpdateRandomQuestionSettings(id, randomQuestionCount, drawTotalMarks, drawPassThreshold);
             return Redirect(url + "&draw_saved=1");
         }
-        catch (ArgumentException ex) when (ex.Message is "draw_count" or "draw_locked")
+        catch (ArgumentException ex) when (ex.Message is "draw_count" or "draw_locked" or "draw_marks" or "draw_score_settings")
         {
             return Redirect(url + "&error=" + ex.Message);
         }

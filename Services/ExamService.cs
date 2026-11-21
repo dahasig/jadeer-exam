@@ -367,7 +367,14 @@ public partial class ExamService
         var usedMarks = 0;
         if (exam.RandomQuestionCount is int count)
         {
-            (usedSeconds, usedMarks) = DrawBudget(ReadBank(examId), count);
+            var bank = ReadBank(examId);
+            (usedSeconds, usedMarks) = DrawBudget(bank, count);
+            if (exam.TotalMarks is int target)
+            {
+                var essayMarks = bank.Where(q => q.Essay).Sum(q => q.Marks);
+                var objectiveMaximum = ObjectiveBudget(target, PracticalReservedMarks(exam), bank);
+                usedMarks = essayMarks + NormalizeDrawScore(bank.Count(q => !q.Essay), count, objectiveMaximum);
+            }
         }
         else
         {
@@ -425,6 +432,8 @@ public partial class ExamService
             ApplyPracticalSettings(exam, true, practicalMaxMarks);
             var used = ExamQuestionBudget(examId).UsedMarks;
             var total = exam.TotalMarks ?? 0;
+            if (exam.RandomQuestionCount.HasValue && DrawError(exam, ReadBank(examId), complete: false) == "draw_marks")
+                throw new ArgumentException("questions_exceed_online_budget");
             if (used > total - PracticalReservedMarks(exam))
                 throw new ArgumentException("questions_exceed_online_budget");
         }
@@ -764,8 +773,7 @@ public partial class ExamService
         }
         attempt.AnswersJson = answersJson;
         attempt.SubmittedAt = DateTime.Now;
-        var objective = CalculateObjectiveScore(examId, answersJson);
-        attempt.ObjectiveScore = Math.Min(objective, MaxObjectiveMarks(examId));
+        attempt.ObjectiveScore = CalculateObjectiveScore(exam, attempt);
         RecomputeAttemptScore(attempt);
         _db.SaveChanges();
         DeleteOtherOpenAttempts(examId, username, attempt.Id);
@@ -1605,24 +1613,28 @@ public partial class ExamService
         _db.SaveChanges();
     }
 
-    private int CalculateObjectiveScore(long examId, string? answersJson)
+    private int CalculateObjectiveScore(ExamEntity exam, ExamAttempt attempt)
     {
-        var answers = ParseAnswersMap(answersJson);
-        var score = 0;
-        foreach (var q in _db.Questions.Where(q => q.ExamId == examId))
-        {
-            if (q.Essay) continue;
-            var selected = answers.TryGetValue(q.Id.ToString(CultureInfo.InvariantCulture), out var v)
-                ? v?.ToString() ?? "" : "";
-            if (!string.IsNullOrEmpty(selected) && q.CorrectOption != null
-                && selected.Trim().Equals(q.CorrectOption.Trim(), StringComparison.OrdinalIgnoreCase))
-                score += q.Mark ?? 0;
-        }
-        return Math.Min(score, MaxObjectiveMarks(examId));
-    }
+        var answers = ParseAnswersMap(attempt.AnswersJson);
+        var query = _db.Questions.AsNoTracking().Where(q => q.ExamId == exam.Id && !q.Essay);
+        var ids = SelectedIds(attempt);
+        if (ids != null)
+            query = query.Where(q => ids.Contains(q.Id));
 
-    private int MaxObjectiveMarks(long examId) =>
-        _db.Questions.Where(q => q.ExamId == examId && !q.Essay).Sum(q => q.Mark ?? 0);
+        var questions = query.Select(q => new { q.Id, q.Mark, q.CorrectOption }).ToList();
+        var rawScore = questions.Sum(q => answers.TryGetValue(q.Id.ToString(CultureInfo.InvariantCulture), out var value)
+            && q.CorrectOption != null
+            && string.Equals(value?.ToString()?.Trim(), q.CorrectOption.Trim(), StringComparison.OrdinalIgnoreCase)
+            ? q.Mark ?? 0 : 0);
+        var rawMaximum = questions.Sum(q => q.Mark ?? 0);
+        if (ids == null || exam.TotalMarks is not int total)
+            return Math.Min(rawScore, rawMaximum);
+
+        var essayMarks = _db.Questions.Where(q => q.ExamId == exam.Id && q.Essay && ids.Contains(q.Id))
+            .Sum(q => q.Mark ?? 0);
+        var objectiveMaximum = total - PracticalReservedMarks(exam) - essayMarks;
+        return NormalizeDrawScore(rawScore, rawMaximum, objectiveMaximum);
+    }
 
     private static Dictionary<string, object?> ParseAnswersMap(string? answersJson)
     {
