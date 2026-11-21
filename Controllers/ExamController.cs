@@ -90,8 +90,6 @@ public class ExamController : AppControllerBase
             Severity = "LOW",
             Details = "توثيق قبل الاختبار - صورة الوجه | المقر: " + (ackName ?? username).Trim()
         };
-        _monitoringService.LogSnapshot(username, faceDto, faceImageBase64);
-
         var idDto = new MonitoringEventDto
         {
             ExamId = examId,
@@ -99,7 +97,19 @@ public class ExamController : AppControllerBase
             Severity = "LOW",
             Details = "توثيق قبل الاختبار - صورة الهوية الوطنية | المقر: " + (ackName ?? username).Trim()
         };
-        _monitoringService.LogSnapshot(username, idDto, idCardImageBase64);
+        try
+        {
+            _monitoringService.LogSnapshot(username, faceDto, faceImageBase64);
+            _monitoringService.LogSnapshot(username, idDto, idCardImageBase64);
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException)
+        {
+            return BadRequest("تعذر حفظ صور التحقق. ارجع وأعد التقاط الصورتين.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return StatusCode(503, "تعذر حفظ صور التحقق. تواصل مع مراقب الاختبار.");
+        }
 
         var doneDto = new MonitoringEventDto
         {

@@ -12,9 +12,12 @@ public class MonitoringController : ControllerBase
 {
     private readonly MonitoringService _monitoringService;
 
-    public MonitoringController(MonitoringService monitoringService)
+    private readonly ExamService _examService;
+
+    public MonitoringController(MonitoringService monitoringService, ExamService examService)
     {
         _monitoringService = monitoringService;
+        _examService = examService;
     }
 
     [HttpGet("client-config")]
@@ -55,7 +58,9 @@ public class MonitoringController : ControllerBase
         var username = User.Identity?.Name;
         if (string.IsNullOrEmpty(username))
             return Unauthorized();
-        _monitoringService.LogEvent(username, dto ?? new MonitoringEventDto());
+        dto ??= new MonitoringEventDto();
+        dto.Details = RemoveMediaMarkers(dto.Details);
+        _monitoringService.LogEvent(username, dto);
         return Ok(new { status = "logged" });
     }
 
@@ -64,11 +69,17 @@ public class MonitoringController : ControllerBase
         public string? EventType { get; set; }
         public string? Severity { get; set; }
         public string? Details { get; set; }
+        public Guid? UploadId { get; set; }
         public long? ExamId { get; set; }
         public string? ImageBase64 { get; set; }
         public string? VideoBase64 { get; set; }
         public int? ConfidenceScore { get; set; }
     }
+
+    private static string? RemoveMediaMarkers(string? details) => details?
+        .Replace("لقطة مراقبة محفوظة:", "", StringComparison.Ordinal)
+        .Replace("فيديو توثيق:", "", StringComparison.Ordinal)
+        .Replace(" | upload-id=", " | upload id=", StringComparison.Ordinal);
 
     [HttpPost("snapshot")]
     [IgnoreAntiforgeryToken]
@@ -77,16 +88,31 @@ public class MonitoringController : ControllerBase
         var username = User.Identity?.Name;
         if (string.IsNullOrEmpty(username))
             return Unauthorized();
-        req ??= new SnapshotRequest();
+        if (req?.ExamId is not long examId)
+            return BadRequest();
+        if (!User.IsInRole("ADMIN") && !User.IsInRole("EXAMINER")
+            && !_examService.CanCandidateAccessExam(username, examId))
+            return Forbid();
         var dto = new MonitoringEventDto
         {
             EventType = req.EventType ?? "CAMERA_SNAPSHOT",
             Severity = req.Severity ?? "MEDIUM",
-            Details = req.Details,
+            Details = RemoveMediaMarkers(req.Details),
             ExamId = req.ExamId,
             ConfidenceScore = req.ConfidenceScore
         };
-        _monitoringService.LogSnapshot(username, dto, req.ImageBase64, req.VideoBase64);
+        try
+        {
+            _monitoringService.LogSnapshot(username, dto, req.ImageBase64, req.VideoBase64, req.UploadId);
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException)
+        {
+            return BadRequest(new { status = "invalid_media" });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return StatusCode(503, new { status = "storage_unavailable" });
+        }
         return Ok(new { status = "saved" });
     }
 }

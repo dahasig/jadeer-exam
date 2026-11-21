@@ -192,10 +192,7 @@ public class ReportsController : AppControllerBase
                 ["notes"] = _monitoringService.NotesSummaryForExamCandidate(examId, a.CandidateUsername)
             }).ToList();
 
-        var rawEvents = _monitoringService.FilteredEventsForStaff(CurrentUsername, "", "", "", null, null)
-            .Where(e => e.ExamId != null && examId == e.ExamId)
-            .OrderBy(e => e.EventTime)
-            .ToList();
+        var rawEvents = _monitoringService.EventsForExam(examId);
 
         var events = rawEvents.Select(e => new
         {
@@ -214,11 +211,12 @@ public class ReportsController : AppControllerBase
             .Select(e =>
             {
                 var fileName = ExtractSnapshotFileName(e.Details);
-                if (fileName == null) return null;
+                var videoFileName = ExtractVideoFileName(e.Details);
+                if (fileName == null && videoFileName == null) return null;
                 return new Dictionary<string, object?>
                 {
                     ["fileName"] = fileName,
-                    ["videoFileName"] = ExtractVideoFileName(e.Details),
+                    ["videoFileName"] = videoFileName,
                     ["eventTime"] = e.EventTime,
                     ["eventTypeLabel"] = _monitoringService.ToArabicEventType(e.EventType),
                     ["details"] = e.Details,
@@ -345,9 +343,7 @@ public class ReportsController : AppControllerBase
 
         var examId = attempt.Exam.Id;
         var username = attempt.CandidateUsername;
-        var timeline = _monitoringService.FilteredEventsForStaff(CurrentUsername, username, "", "", null, null)
-            .Where(e => e.ExamId != null && examId == e.ExamId)
-            .OrderBy(e => e.EventTime)
+        var timeline = _monitoringService.EventsForExam(examId, username)
             .Select(e => new Dictionary<string, object?>
             {
                 ["eventTime"] = e.EventTime,
@@ -692,7 +688,7 @@ public class ReportsController : AppControllerBase
     private static string Fmt(object? value) =>
         value == null || string.IsNullOrWhiteSpace(Convert.ToString(value)) ? "—" : Convert.ToString(value)!;
 
-    [HttpGet("reports/exam/{id:long}/media/view")]
+    [HttpGet("reports/exam/{examId:long}/media/view")]
     public IActionResult MediaView(long examId, string fileName, string? username, string? capturedAt)
     {
         if (!IsStaff || !_examService.CanManageExam(CurrentUsername, examId))
@@ -703,7 +699,7 @@ public class ReportsController : AppControllerBase
             || safeName.Contains('/') || safeName.Contains('\\'))
             return Redirect("/admin/reports");
 
-        var snapshotsDir = Path.GetFullPath(Path.Combine("data", "snapshots"));
+        var snapshotsDir = MonitoringService.SnapshotDirectory;
         string target;
         try
         {
@@ -714,7 +710,7 @@ public class ReportsController : AppControllerBase
             return Redirect("/admin/reports");
         }
 
-        if (!System.IO.File.Exists(target))
+        if (!_monitoringService.HasMediaReference(examId, safeName) || !System.IO.File.Exists(target))
             return Redirect("/admin/reports");
 
         ViewBag.ExamId = examId;
@@ -727,7 +723,7 @@ public class ReportsController : AppControllerBase
         return View("~/Views/Admin/MediaViewer.cshtml");
     }
 
-    [HttpGet("reports/exam/{id:long}/snapshots/{fileName}")]
+    [HttpGet("reports/exam/{examId:long}/snapshots/{fileName}")]
     public IActionResult Snapshot(long examId, string fileName)
     {
         if (!IsStaff || !_examService.CanManageExam(CurrentUsername, examId))
@@ -736,7 +732,7 @@ public class ReportsController : AppControllerBase
         var safeName = (fileName ?? "").Trim();
         if (safeName.Length == 0) return NotFound();
 
-        var snapshotsDir = Path.GetFullPath(Path.Combine("data", "snapshots"));
+        var snapshotsDir = MonitoringService.SnapshotDirectory;
         string target;
         try
         {
@@ -747,7 +743,7 @@ public class ReportsController : AppControllerBase
             return NotFound();
         }
 
-        if (!System.IO.File.Exists(target))
+        if (!_monitoringService.HasMediaReference(examId, safeName) || !System.IO.File.Exists(target))
             return NotFound();
 
         var contentType = safeName.EndsWith(".webm", StringComparison.OrdinalIgnoreCase)
@@ -756,7 +752,7 @@ public class ReportsController : AppControllerBase
         if (new FileExtensionContentTypeProvider().TryGetContentType(safeName, out var detected))
             contentType = detected;
 
-        return PhysicalFile(target, contentType);
+        return PhysicalFile(target, contentType, enableRangeProcessing: true);
     }
 
     private static bool InReportPeriod(DateTime? ts, DateTime? from, DateTime? to)

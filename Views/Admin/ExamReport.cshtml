@@ -1,4 +1,4 @@
-﻿@{
+@{
     dynamic exam = ViewBag.Exam;
     ViewData["Title"] = exam?.Title?.ToString() ?? Localizer["exam.report.results"].Value;
     ViewData["ActiveNav"] = "reports";
@@ -92,7 +92,7 @@
                                asp-route-username="@username"
                                asp-route-capturedAt="@capturedAt"
                                target="_blank" rel="noopener">
-                                <img src="~/admin/reports/exam/@exam.Id/snapshots/@snapshotFileName"
+                                <img loading="lazy" src="~/admin/reports/exam/@exam.Id/snapshots/@snapshotFileName"
                                      alt="@Localizer["reports.snapshot.alt"]"/>
                             </a>
                             <a class="btn-outline snapshot-open-btn no-print"
@@ -108,7 +108,7 @@
                     {
                         <div class="snapshot-gallery-media">
                             <div class="stamped-media">
-                                <video controls playsinline preload="metadata"
+                                <video controls playsinline preload="none"
                                        src="~/admin/reports/exam/@exam.Id/snapshots/@videoFileName"></video>
                                 <div class="stamped-media-overlay">
                                     <span class="stamped-media-name">@ViewMap.Str(ev, "username")</span>

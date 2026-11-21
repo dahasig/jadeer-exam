@@ -312,85 +312,95 @@ public class MonitoringService
         return "\"" + v.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
 
-    public void LogSnapshot(string username, MonitoringEventDto dto, string? imageBase64) =>
-        LogSnapshot(username, dto, imageBase64, null);
+    public static string SnapshotDirectory => Path.GetFullPath(Path.Combine(
+        Environment.GetEnvironmentVariable("RAILWAY_VOLUME_MOUNT_PATH") ?? "data", "snapshots"));
 
-    public void LogSnapshot(string username, MonitoringEventDto dto, string? imageBase64, string? videoBase64)
+    public List<SuspiciousEvent> EventsForExam(long examId, string? username = null) =>
+        _db.SuspiciousEvents.AsNoTracking().Where(e => e.ExamId == examId
+                && (username == null || e.Username == username))
+            .OrderBy(e => e.EventTime).ThenBy(e => e.Id).ToList();
+
+    public bool HasMediaReference(long examId, string fileName)
+    {
+        return _db.SuspiciousEvents.AsNoTracking()
+            .Where(e => e.ExamId == examId && e.Details != null && e.Details.Contains(fileName))
+            .Select(e => e.Details)
+            .AsEnumerable()
+            .Any(details => details!.Split(" | ").Any(part =>
+            {
+                if (!part.StartsWith("لقطة مراقبة محفوظة: ", StringComparison.Ordinal)
+                    && !part.StartsWith("فيديو توثيق: ", StringComparison.Ordinal))
+                    return false;
+                return part.EndsWith("/" + fileName, StringComparison.Ordinal)
+                    || part.EndsWith((char)92 + fileName, StringComparison.Ordinal);
+            }));
+    }
+
+    public void LogSnapshot(string username, MonitoringEventDto dto, string? imageBase64,
+        string? videoBase64 = null, Guid? uploadId = null)
     {
         var capturedAt = DateTime.Now;
-        var merged = new StringBuilder(dto.Details ?? "");
-        if (merged.Length > 0)
-        {
-            merged.Append(" | ");
-        }
+        var image = string.IsNullOrWhiteSpace(imageBase64) ? null : FileUploadSecurity.ValidateBase64Media(
+            DecodeBase64Payload(imageBase64), FileUploadSecurity.Category.Image);
+        var video = string.IsNullOrWhiteSpace(videoBase64) ? null : FileUploadSecurity.ValidateBase64Media(
+            DecodeBase64Payload(videoBase64), FileUploadSecurity.Category.Video);
+        if (image == null && video == null)
+            throw new ArgumentException("file_empty");
 
-        merged.Append("وقت الالتقاط: ")
+        var captureId = (uploadId ?? Guid.NewGuid()).ToString("N");
+        var uploadMarker = " | upload-id=" + captureId;
+        if (uploadId.HasValue && _db.SuspiciousEvents.Any(e => e.Username == username && e.ExamId == dto.ExamId
+            && e.Details != null && e.Details.EndsWith(uploadMarker)))
+            return;
+
+        var candidateKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            Encoding.UTF8.GetBytes(username))).ToLowerInvariant();
+        var stem = $"{dto.ExamId}_{candidateKey}_{captureId}";
+        var dir = SnapshotDirectory;
+        Directory.CreateDirectory(dir);
+        var details = new StringBuilder(dto.Details ?? "").Append(" | وقت الالتقاط: ")
             .Append(capturedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
 
-        if (!string.IsNullOrWhiteSpace(imageBase64))
+        if (image != null)
         {
-            try
-            {
-                var imageBytes = FileUploadSecurity.ValidateBase64Media(
-                    DecodeBase64Payload(imageBase64), FileUploadSecurity.Category.Image);
-                if (imageBytes.Length > 0)
-                {
-                    imageBytes = StampSnapshot(imageBytes, capturedAt, username);
-                    var fileName = username + "_" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + ".jpg";
-                    var dir = Path.GetFullPath(Path.Combine("data", "snapshots"));
-                    Directory.CreateDirectory(dir);
-                    var file = SafePath.ResolveUnder(dir, SanitizeFilePart(fileName));
-                    File.WriteAllBytes(file, imageBytes);
-                    merged.Append(" | لقطة مراقبة محفوظة: ").Append(Path.GetFullPath(file));
-                }
-            }
-            catch (Exception)
-            {
-                merged.Append(" | تعذر حفظ الصورة");
-            }
+            var path = Path.Combine(dir, stem + ".jpg");
+            WriteMedia(path, StampSnapshot(image, capturedAt, username));
+            details.Append(" | لقطة مراقبة محفوظة: ").Append(path);
         }
 
-        if (!string.IsNullOrWhiteSpace(videoBase64))
+        if (video != null)
         {
-            try
-            {
-                var videoBytes = FileUploadSecurity.ValidateBase64Media(
-                    DecodeBase64Payload(videoBase64), FileUploadSecurity.Category.Video);
-                if (videoBytes.Length > 0)
-                {
-                    var videoName = username + "_" + capturedAt.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture)
-                                    + ".webm";
-                    var dir = Path.GetFullPath(Path.Combine("data", "snapshots"));
-                    Directory.CreateDirectory(dir);
-                    var file = SafePath.ResolveUnder(dir, SanitizeFilePart(videoName));
-                    File.WriteAllBytes(file, videoBytes);
-                    merged.Append(" | اسم المرشح: ").Append(username);
-                    merged.Append(" | وقت الفيديو: ")
-                        .Append(capturedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
-                    merged.Append(" | فيديو توثيق: ").Append(Path.GetFullPath(file));
-                }
-            }
-            catch (Exception)
-            {
-                merged.Append(" | تعذر حفظ الفيديو");
-            }
+            var path = Path.Combine(dir, stem + ".webm");
+            WriteMedia(path, video);
+            details.Append(" | فيديو توثيق: ").Append(path);
         }
 
-        dto.Details = merged.ToString();
+        dto.Details = details.Append(uploadMarker).ToString();
         LogEvent(username, dto);
     }
 
-    private static string SanitizeFilePart(string name)
+    private static void WriteMedia(string path, byte[] bytes)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var cleaned = new string(name.Select(c => invalid.Contains(c) || c == '/' || c == '\\' || c == '\0' ? '_' : c)
-            .ToArray());
-        if (cleaned.Contains("..", StringComparison.Ordinal))
-        {
-            cleaned = cleaned.Replace("..", "_", StringComparison.Ordinal);
-        }
+        if (File.Exists(path))
+            return;
 
-        return cleaned;
+        var temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllBytes(temporaryPath, bytes);
+            try
+            {
+                File.Move(temporaryPath, path);
+            }
+            catch (IOException) when (File.Exists(path))
+            {
+                // A concurrent retry already published the file.
+            }
+        }
+        finally
+        {
+            File.Delete(temporaryPath);
+        }
     }
 
     private static byte[] StampSnapshot(byte[] source, DateTime capturedAt, string username)

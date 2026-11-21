@@ -28,6 +28,8 @@ const cameraLockDetail = document.getElementById("cameraLockDetail");
 const cameraLockActionBtn = document.getElementById("cameraLockActionBtn");
 
 let examSubmitted = false;
+let examSubmitting = false;
+const pendingCaptures = new Set();
 const examIdNumeric = Number.parseInt(String(examId || ""), 10);
 
 let cameraStream = null;
@@ -115,11 +117,6 @@ const SNAPSHOT_VIDEO_MS = 5500;
 const CRITICAL_EVIDENCE_VIDEO_MS = 7000;
 
 const CORRELATION_EVENT_WINDOW_MS = 90000;
-
-const IDB_NAME = "rc_smart_exam_monitor";
-const IDB_STORE = "outbox";
-const IDB_VER = 1;
-const QUEUE_LIMIT = 40;
 
 function examContext() {
     return Number.isFinite(examIdNumeric) ? { examId: examIdNumeric } : {};
@@ -209,103 +206,20 @@ function restartAudioMonitorTimer() {
     audioMonitorTimer = window.setInterval(runAudioMonitorTick, audioTickMs);
 }
 
-function openMonitorDb() {
-    return new Promise((resolve, reject) => {
-        const req = indexedDB.open(IDB_NAME, IDB_VER);
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => resolve(req.result);
-        req.onupgradeneeded = () => {
-            const db = req.result;
-            if (!db.objectStoreNames.contains(IDB_STORE)) {
-                db.createObjectStore(IDB_STORE, { keyPath: "id" });
-            }
-        };
-    });
-}
-
-async function outboxCount(db) {
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, "readonly");
-        const r = tx.objectStore(IDB_STORE).count();
-        r.onsuccess = () => resolve(r.result);
-        r.onerror = () => reject(r.error);
-    });
-}
-
-async function outboxAdd(row) {
-    try {
-        const db = await openMonitorDb();
-        const n = await outboxCount(db);
-        if (n >= QUEUE_LIMIT) {
-            db.close();
-            return;
-        }
-        const id =
-            typeof crypto !== "undefined" && crypto.randomUUID
-                ? crypto.randomUUID()
-                : `q-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        await new Promise((resolve, reject) => {
-            const tx = db.transaction(IDB_STORE, "readwrite");
-            tx.objectStore(IDB_STORE).add({ ...row, id, createdAt: Date.now() });
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => reject(tx.error);
-        });
-        db.close();
-    } catch (_) {
-        /* تجاهل فشل التخزين المحلي */
-    }
-}
-
-async function outboxListSorted() {
-    const db = await openMonitorDb();
-    const rows = await new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, "readonly");
-        const r = tx.objectStore(IDB_STORE).getAll();
-        r.onsuccess = () => resolve(r.result || []);
-        r.onerror = () => reject(r.error);
-    });
-    db.close();
-    return rows.slice().sort((a, b) => a.createdAt - b.createdAt);
-}
-
-async function outboxDelete(id) {
-    const db = await openMonitorDb();
-    await new Promise((resolve, reject) => {
-        const tx = db.transaction(IDB_STORE, "readwrite");
-        tx.objectStore(IDB_STORE).delete(id);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-    });
-    db.close();
-}
-
-async function flushMonitoringOutbox() {
-    let rows = [];
-    try {
-        rows = await outboxListSorted();
-    } catch {
-        return;
-    }
-    for (const row of rows) {
-        try {
-            const r = await fetch(row.url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: row.payload
-            });
-            if (r.ok) {
-                await outboxDelete(row.id);
-            } else {
-                break;
-            }
-        } catch {
-            break;
-        }
-    }
-}
-
 async function monitoringPost(url, bodyObj) {
-    const body = JSON.stringify({ ...examContext(), ...bodyObj });
+    const id = crypto.randomUUID?.() ?? Date.now() + "-" + Math.random();
+    const body = JSON.stringify({ ...examContext(), ...bodyObj,
+        ...(url === "/monitoring/snapshot" && crypto.randomUUID ? { uploadId: id } : {})
+    });
+    if (url === "/monitoring/snapshot") {
+        try {
+            await monitoringOutbox.add({ id, url, payload: body });
+            void monitoringOutbox.flush();
+            return null;
+        } catch {
+            // Try the server directly if browser storage is unavailable.
+        }
+    }
     try {
         const r = await fetch(url, {
             method: "POST",
@@ -313,9 +227,13 @@ async function monitoringPost(url, bodyObj) {
             credentials: "same-origin",
             body
         });
-        if (r.ok) {
-            void flushMonitoringOutbox();
+        if (r.ok && !r.redirected) {
+            void monitoringOutbox.flush();
             return r;
+        }
+        if ([400, 403, 413, 415, 422].includes(r.status)) {
+            warnMonitoringStorage();
+            return null;
         }
         if (!audioPostFailWarned && (r.status === 401 || r.status === 403)) {
             audioPostFailWarned = true;
@@ -324,8 +242,20 @@ async function monitoringPost(url, bodyObj) {
     } catch {
         /* يسجّل لاحقاً في الطابور */
     }
-    await outboxAdd({ url, payload: body });
+    try {
+        await monitoringOutbox.add({ id, url, payload: body });
+    } catch {
+        warnMonitoringStorage();
+    }
     return null;
+}
+
+window.addEventListener("monitoring-upload-rejected", warnMonitoringStorage);
+
+function warnMonitoringStorage() {
+    showWarning(pageLocale === "en-US"
+        ? "Some monitoring evidence could not be saved. Contact the exam supervisor."
+        : "تعذر حفظ بعض أدلة المراقبة. تواصل مع مراقب الاختبار.");
 }
 
 function canThrottleSnapshot(key, ms) {
@@ -374,12 +304,13 @@ async function recordShortVideoClip(maxMs = 8000) {
     const hasAudio = stream.getAudioTracks().length > 0;
     try {
         const mime = pickEvidenceMimeType(hasAudio);
-        const options = mime ? { mimeType: mime } : undefined;
+        const options = { videoBitsPerSecond: 500000, audioBitsPerSecond: 64000 };
+        if (mime) options.mimeType = mime;
         let recorder;
         try {
             recorder = new MediaRecorder(stream, options);
         } catch (_) {
-            recorder = new MediaRecorder(stream);
+            recorder = new MediaRecorder(stream, { videoBitsPerSecond: 500000 });
         }
         const chunks = [];
         recorder.ondataavailable = (e) => {
@@ -529,14 +460,12 @@ async function captureEvidenceBundle(baseEventType, severity, details) {
             videoClip
         );
     }
-    window.setTimeout(async () => {
-        const post = captureCompressedJpeg();
-        if (!post) {
-            return;
-        }
+    await new Promise((resolve) => window.setTimeout(resolve, 2000));
+    const post = captureCompressedJpeg();
+    if (post) {
         const postVideo = await recordShortVideoClip(3500);
-        void uploadSnapshotWithImage(`${baseEventType}_POST`, severity, `${details} | دليل بعد الحدث`, post, postVideo);
-    }, 2000);
+        await uploadSnapshotWithImage(`${baseEventType}_POST`, severity, `${details} | دليل بعد الحدث`, post, postVideo);
+    }
 }
 
 async function evaluateCorrelationRules(triggerEventType, triggerSeverity, triggerDetails) {
@@ -560,7 +489,9 @@ async function evaluateCorrelationRules(triggerEventType, triggerSeverity, trigg
     });
     applyRiskDelta("CRITICAL_CORRELATED_PATTERN", "HIGH");
     showWarning(mon("critical", "تم تفعيل تنبيه حرج مركب للمرشح"));
-    await captureEvidenceBundle("CRITICAL_CORRELATED_PATTERN", "HIGH", merged);
+    if (!examSubmitting && !examSubmitted) {
+        await trackCapture(captureEvidenceBundle("CRITICAL_CORRELATED_PATTERN", "HIGH", merged));
+    }
 }
 
 function renderRiskHud() {
@@ -575,7 +506,6 @@ function applyRiskDelta(eventType, severity) {
     const extra = EVENT_EXTRA_POINTS[eventType] ?? 0;
     riskScore = Math.max(0, Math.min(100, riskScore + sev + extra));
     renderRiskHud();
-    resetPeriodicSnapshotTimer();
 }
 
 function computeAdaptiveSnapshotIntervalMs() {
@@ -588,19 +518,20 @@ function computeAdaptiveSnapshotIntervalMs() {
     return 120000;
 }
 
-function resetPeriodicSnapshotTimer() {
-    if (periodicSnapshotTimer) {
-        clearInterval(periodicSnapshotTimer);
-    }
+function startPeriodicSnapshots() {
+    const startedAt = Date.now();
     periodicSnapshotTimer = setInterval(() => {
-        if (cameraStream && examCameraUnlocked && canThrottleSnapshot("PERIODIC_CHECK", SNAPSHOT_THROTTLE_MS.PERIODIC_CHECK)) {
+        const interval = Math.max(computeAdaptiveSnapshotIntervalMs(), SNAPSHOT_THROTTLE_MS.PERIODIC_CHECK);
+        const lastCapture = lastThrottleByKey.PERIODIC_CHECK || startedAt;
+        if (cameraStream && examCameraUnlocked && Date.now() - lastCapture >= interval
+            && canThrottleSnapshot("PERIODIC_CHECK", interval)) {
             uploadSnapshot(
                 "PERIODIC_CHECK",
                 "LOW",
                 `لقطة مرجعية دورية متكيفة مع مستوى المخاطرة (score=${Math.round(riskScore)})`
             ).catch(() => {});
         }
-    }, computeAdaptiveSnapshotIntervalMs());
+    }, 1000);
 }
 
 function startRiskDecay() {
@@ -611,7 +542,6 @@ function startRiskDecay() {
         if (riskScore > 0) {
             riskScore = Math.max(0, riskScore - 1);
             renderRiskHud();
-            resetPeriodicSnapshotTimer();
         }
     }, 10000);
 }
@@ -928,7 +858,7 @@ async function runHeartbeat() {
         if (res.ok) {
             heartbeatFailStreak = 0;
             sessionPing(true);
-            void flushMonitoringOutbox();
+            void monitoringOutbox.flush();
             return;
         }
         heartbeatFailStreak += 1;
@@ -1044,7 +974,17 @@ async function attachMandatoryMedia(eventType, severity, details) {
     }
 }
 
-async function uploadSnapshot(eventType, severity, details) {
+function uploadSnapshot(eventType, severity, details) {
+    if (examSubmitting || examSubmitted) return Promise.resolve();
+    return trackCapture(captureSnapshot(eventType, severity, details));
+}
+
+function trackCapture(promise) {
+    pendingCaptures.add(promise);
+    return promise.finally(() => pendingCaptures.delete(promise));
+}
+
+async function captureSnapshot(eventType, severity, details) {
     if (!cameraStream) {
         return;
     }
@@ -1084,16 +1024,32 @@ async function autoSave() {
 }
 
 async function submitExam() {
-    const response = await fetch(`/exam/${examId}/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answers: JSON.stringify(collectAnswers()) })
-    });
-    const result = await response.json();
-    examSubmitted = true;
-    alert(mon("submitSuccess", "تم تسليم الاختبار بنجاح."));
-    stopCamera();
-    window.location.href = "/dashboard";
+    if (examSubmitting || examSubmitted) return;
+    examSubmitting = true;
+    try {
+        const response = await fetch(`/exam/${examId}/submit`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ answers: JSON.stringify(collectAnswers()) })
+        });
+        if (!response.ok || response.redirected) {
+            const result = await response.json().catch(() => ({}));
+            showWarning(result.message || mon("submitFailed", "تعذر تسليم الاختبار. حاول مرة أخرى."));
+            return;
+        }
+        examSubmitted = true;
+        await Promise.race([
+            Promise.allSettled(pendingCaptures).then(() => monitoringOutbox.flush()),
+            new Promise((resolve) => window.setTimeout(resolve, 20000))
+        ]);
+        alert(mon("submitSuccess", "تم تسليم الاختبار بنجاح."));
+        stopCamera();
+        window.location.href = "/dashboard";
+    } catch {
+        showWarning(mon("submitFailed", "تعذر تسليم الاختبار. حاول مرة أخرى."));
+    } finally {
+        examSubmitting = false;
+    }
 }
 
 function stopFaceMonitor() {
@@ -1383,6 +1339,7 @@ async function startCamera() {
 }
 
 function stopCamera() {
+    clearInterval(periodicSnapshotTimer);
     stopFaceMonitor();
     stopAudioMonitor();
     if (!cameraStream) {
@@ -1476,9 +1433,9 @@ setInterval(autoSave, 30000);
 
 setInterval(runHeartbeat, 15000);
 
-setInterval(() => void flushMonitoringOutbox(), 60000);
+setInterval(() => void monitoringOutbox.flush(), 60000);
 
-window.addEventListener("online", () => void flushMonitoringOutbox());
+window.addEventListener("online", () => void monitoringOutbox.flush());
 
 submitButtons.forEach((btn) => btn.addEventListener("click", submitExam));
 
@@ -1523,7 +1480,7 @@ window.addEventListener("beforeunload", (e) => {
     }
     startRiskDecay();
     renderRiskHud();
-    resetPeriodicSnapshotTimer();
+    startPeriodicSnapshots();
     cameraLockOverlay?.classList.remove("hidden");
     // الكاميرا تُفعَّل فقط بعد ضغط المستخدم (متطلب المتصفح لصلاحية getUserMedia)
 })();

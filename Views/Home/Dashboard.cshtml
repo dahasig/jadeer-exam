@@ -5,6 +5,10 @@
 <div class="page-content">
 @if (User.IsInRole("CANDIDATE"))
 {
+    <p data-monitor-user="@User.Identity?.Name" data-monitor-outbox-status role="alert" hidden>
+        @Localizer["exam.mon.saveFail"]
+    </p>
+    <script defer src="~/js/monitoring-outbox.js" asp-append-version="true"></script>
     <section class="card panel">
         <h2 class="panel-heading">@Localizer["dashboard.yourExams"]</h2>
         @{

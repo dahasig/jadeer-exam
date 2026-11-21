@@ -28,6 +28,7 @@
 </head>
 <body class="exam-body exam-camera-locked"
       data-exam-id="@exam.Id"
+      data-monitor-user="@User.Identity?.Name"
       data-page-lang="@pageLang"
       data-exam-duration-minutes="@exam.DurationMinutes">
 
@@ -271,6 +272,7 @@
     };
 </script>
 <script defer src="~/js/exam-calculator.js?v=@assetsVersion"></script>
+<script defer src="~/js/monitoring-outbox.js?v=@assetsVersion"></script>
 <script defer src="~/js/exam-monitor.js?v=@assetsVersion"></script>
 </body>
 </html>
