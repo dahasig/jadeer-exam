@@ -29,6 +29,8 @@
 <body class="exam-body exam-camera-locked"
       data-exam-id="@exam.Id"
       data-monitor-user="@User.Identity?.Name"
+      data-evidence-exam="@exam.Title"
+      data-evidence-candidate="@(User.FindFirst("full_name")?.Value ?? User.Identity?.Name)"
       data-page-lang="@pageLang"
       data-exam-duration-minutes="@exam.DurationMinutes">
 
@@ -278,7 +280,8 @@
     };
 </script>
 <script defer src="~/js/exam-calculator.js?v=@assetsVersion"></script>
-<script defer src="~/js/monitoring-outbox.js?v=@assetsVersion"></script>
+<script defer src="~/js/monitoring-outbox.js" asp-append-version="true"></script>
+<script defer src="~/js/evidence-stamp.js" asp-append-version="true"></script>
 <script defer src="~/js/exam-monitor.js" asp-append-version="true"></script>
 </body>
 </html>

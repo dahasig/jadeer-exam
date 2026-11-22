@@ -73,11 +73,16 @@ const monitoringOutbox = (() => {
                     const r = await fetch(row.url, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        signal: AbortSignal.timeout(8000),
+                        signal: AbortSignal.timeout(30000),
                         body: row.payload
                     });
                     if (r.redirected) return;
-                    if (!r.ok) {
+                    if (r.ok && row.url === "/monitoring/snapshot") {
+                    const result = await r.json().catch(() => null);
+                    if (result?.status === "partial")
+                        window.dispatchEvent(new Event("monitoring-upload-rejected"));
+                }
+                if (!r.ok) {
                         if (![400, 403, 413, 415, 422].includes(r.status)) return;
                         window.dispatchEvent(new Event("monitoring-upload-rejected"));
                     }

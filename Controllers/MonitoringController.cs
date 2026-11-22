@@ -13,11 +13,14 @@ public class MonitoringController : ControllerBase
     private readonly MonitoringService _monitoringService;
 
     private readonly ExamService _examService;
+    private readonly ILogger<MonitoringController> _logger;
 
-    public MonitoringController(MonitoringService monitoringService, ExamService examService)
+    public MonitoringController(MonitoringService monitoringService, ExamService examService,
+        ILogger<MonitoringController> logger)
     {
         _monitoringService = monitoringService;
         _examService = examService;
+        _logger = logger;
     }
 
     [HttpGet("client-config")]
@@ -89,7 +92,7 @@ public class MonitoringController : ControllerBase
         if (string.IsNullOrEmpty(username))
             return Unauthorized();
         if (req?.ExamId is not long examId)
-            return BadRequest();
+            return BadRequest(new { status = "missing_exam" });
         if (!User.IsInRole("ADMIN") && !User.IsInRole("EXAMINER")
             && !_examService.CanCandidateAccessExam(username, examId))
             return Forbid();
@@ -103,14 +106,24 @@ public class MonitoringController : ControllerBase
         };
         try
         {
-            _monitoringService.LogSnapshot(username, dto, req.ImageBase64, req.VideoBase64, req.UploadId);
+            var (imageError, videoError) = _monitoringService.LogSnapshot(username, dto, req.ImageBase64,
+                req.VideoBase64, req.UploadId, allowPartial: true);
+            if (imageError != null || videoError != null)
+            {
+                _logger.LogWarning("Monitoring upload partially saved. Image error: {ImageError}, video error: {VideoError}.",
+                    imageError, videoError);
+                return Ok(new { status = "partial" });
+            }
         }
         catch (Exception ex) when (ex is ArgumentException or FormatException)
         {
+            _logger.LogWarning("Monitoring upload rejected: {Reason}.",
+                ex is FormatException ? "file_encoding" : ex.Message);
             return BadRequest(new { status = "invalid_media" });
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            _logger.LogWarning("Monitoring storage unavailable: {ErrorType}.", ex.GetType().Name);
             return StatusCode(503, new { status = "storage_unavailable" });
         }
         return Ok(new { status = "saved" });

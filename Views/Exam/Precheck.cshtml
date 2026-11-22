@@ -17,7 +17,8 @@
 <div class="page-content">
     <section class="card panel">
         <div class="instructions-box">@ViewBag.InstructionsText</div>
-        <form class="admin-form precheck-form" asp-controller="Exam" asp-action="Precheck" asp-route-id="@exam.Id" method="post" enctype="multipart/form-data">
+        <form data-evidence-exam="@exam.Title"
+      data-evidence-candidate="@(User.FindFirst("full_name")?.Value ?? User.Identity?.Name)" class="admin-form precheck-form" asp-controller="Exam" asp-action="Precheck" asp-route-id="@exam.Id" method="post" enctype="multipart/form-data">
             @Html.AntiForgeryToken()
             <input type="text" name="ackName" value="@ViewBag.PrefillName" placeholder="@Localizer["precheck.name"]" required>
             <p class="precheck-camera-hint">@Localizer["precheck.camera.hint"]</p>
@@ -64,5 +65,6 @@
         cameraFailError: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["precheck.error.cameraFail"].Value))
     };
 </script>
-<script defer src="~/js/precheck-capture.js?v=@assetsVersion"></script>
+<script defer src="~/js/evidence-stamp.js" asp-append-version="true"></script>
+<script defer src="~/js/precheck-capture.js" asp-append-version="true"></script>
 }

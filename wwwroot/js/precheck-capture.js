@@ -46,15 +46,12 @@ function captureFrameBase64() {
     if (!precheckVideo || !precheckCanvas) {
         return null;
     }
-    const vw = precheckVideo.videoWidth;
-    const vh = precheckVideo.videoHeight;
-    if (!vw || !vh) {
-        return null;
-    }
-    precheckCanvas.width = vw;
-    precheckCanvas.height = vh;
-    const ctx = precheckCanvas.getContext("2d");
-    ctx.drawImage(precheckVideo, 0, 0, vw, vh);
+    const form = precheckVideo.closest("form");
+    const identity = {
+        exam: form.dataset.evidenceExam,
+        candidate: form.dataset.evidenceCandidate || form.elements.ackName.value
+    };
+    if (!window.jadeerEvidence.draw(precheckCanvas, precheckVideo, identity, 1440)) return null;
     return precheckCanvas.toDataURL("image/jpeg", 0.88);
 }
 

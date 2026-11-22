@@ -147,7 +147,7 @@ public static class FileUploadSecurity
             || probe.Contains("powershell", StringComparison.Ordinal)
             || probe.Contains("cmd.exe", StringComparison.Ordinal)
             || probe.Contains("/bin/sh", StringComparison.Ordinal)
-            || probe.Contains("<%", StringComparison.Ordinal))
+            || (category == Category.Excel && probe.Contains("<%", StringComparison.Ordinal)))
         {
             throw new ArgumentException("file_malware");
         }

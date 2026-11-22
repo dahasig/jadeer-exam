@@ -14,6 +14,10 @@ function exprLabel(label) {
 }
 
 const examId = document.body.dataset.examId;
+const evidenceIdentity = {
+    exam: document.body.dataset.evidenceExam,
+    candidate: document.body.dataset.evidenceCandidate || document.body.dataset.monitorUser
+};
 const warningToast = document.getElementById("warningToast");
 const submitButtons = document.querySelectorAll(".submit-exam-btn");
 const statusText = document.getElementById("statusText");
@@ -228,6 +232,8 @@ async function monitoringPost(url, bodyObj) {
             body
         });
         if (r.ok && !r.redirected) {
+            if (url === "/monitoring/snapshot"
+                && (await r.clone().json().catch(() => null))?.status === "partial") warnMonitoringStorage();
             void monitoringOutbox.flush();
             return r;
         }
@@ -301,16 +307,30 @@ async function recordShortVideoClip(maxMs = 8000) {
     if (!stream || stream.getVideoTracks().length === 0) {
         return null;
     }
-    const hasAudio = stream.getAudioTracks().length > 0;
+    const canvas = document.createElement("canvas");
+    let videoTrack;
+    try {
+        if (typeof canvas.captureStream !== "function"
+            || !window.jadeerEvidence.draw(canvas, monitorVideo, evidenceIdentity, 720)) return null;
+        videoTrack = canvas.captureStream(12).getVideoTracks()[0];
+    } catch {
+        return null;
+    }
+    if (!videoTrack) return null;
+    const recordingStream = new MediaStream([videoTrack, ...stream.getAudioTracks()]);
+    const hasAudio = recordingStream.getAudioTracks().length > 0;
+    const frameTimer = window.setInterval(() => {
+        window.jadeerEvidence.draw(canvas, monitorVideo, evidenceIdentity, 720);
+    }, 1000 / 12);
     try {
         const mime = pickEvidenceMimeType(hasAudio);
         const options = { videoBitsPerSecond: 500000, audioBitsPerSecond: 64000 };
         if (mime) options.mimeType = mime;
         let recorder;
         try {
-            recorder = new MediaRecorder(stream, options);
+            recorder = new MediaRecorder(recordingStream, options);
         } catch (_) {
-            recorder = new MediaRecorder(stream, { videoBitsPerSecond: 500000 });
+            recorder = new MediaRecorder(recordingStream, { videoBitsPerSecond: 500000 });
         }
         const chunks = [];
         recorder.ondataavailable = (e) => {
@@ -346,6 +366,9 @@ async function recordShortVideoClip(maxMs = 8000) {
         return await stopped;
     } catch (_) {
         return null;
+    } finally {
+        window.clearInterval(frameTimer);
+        videoTrack.stop();
     }
 }
 
@@ -941,18 +964,7 @@ function captureCompressedJpeg(maxWidth = 720, quality = 0.72) {
     if (!monitorVideo || !monitorCanvas || !cameraStream) {
         return null;
     }
-    const vw = monitorVideo.videoWidth;
-    const vh = monitorVideo.videoHeight;
-    if (!vw || !vh) {
-        return null;
-    }
-    const scale = Math.min(1, maxWidth / vw);
-    const w = Math.round(vw * scale);
-    const h = Math.round(vh * scale);
-    monitorCanvas.width = w;
-    monitorCanvas.height = h;
-    const ctx = monitorCanvas.getContext("2d");
-    ctx.drawImage(monitorVideo, 0, 0, w, h);
+    if (!window.jadeerEvidence.draw(monitorCanvas, monitorVideo, evidenceIdentity, maxWidth)) return null;
     return monitorCanvas.toDataURL("image/jpeg", quality);
 }
 
@@ -1313,6 +1325,12 @@ async function startCamera() {
             await monitorVideo.play().catch(() => {});
         }
         updateCameraFooter(true, mon("loadingAnalysis", "جاري تحميل تحليل الوجه والصوت…"));
+        const firstImage = captureCompressedJpeg();
+        if (firstImage)
+            void trackCapture(monitoringPost("/monitoring/snapshot", {
+                eventType: "CAMERA_READY_SNAPSHOT", severity: "LOW",
+                details: "لقطة بدء المراقبة", imageBase64: firstImage
+            }));
         try {
             await logEvent("CAMERA_ENABLED", "LOW", "تم تفعيل كاميرا ومراقبة الصوت بموافقة المستخدم");
         } catch (_) { /* لا تمنع فتح الاختبار */ }

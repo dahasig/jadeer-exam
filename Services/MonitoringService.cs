@@ -1,5 +1,3 @@
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -343,22 +341,20 @@ public class MonitoringService
             }));
     }
 
-    public void LogSnapshot(string username, MonitoringEventDto dto, string? imageBase64,
-        string? videoBase64 = null, Guid? uploadId = null)
+    public (string? ImageError, string? VideoError) LogSnapshot(string username, MonitoringEventDto dto,
+        string? imageBase64, string? videoBase64 = null, Guid? uploadId = null, bool allowPartial = false)
     {
         var capturedAt = DateTime.Now;
-        var image = string.IsNullOrWhiteSpace(imageBase64) ? null : FileUploadSecurity.ValidateBase64Media(
-            DecodeBase64Payload(imageBase64), FileUploadSecurity.Category.Image);
-        var video = string.IsNullOrWhiteSpace(videoBase64) ? null : FileUploadSecurity.ValidateBase64Media(
-            DecodeBase64Payload(videoBase64), FileUploadSecurity.Category.Video);
+        var (image, imageError) = ReadSnapshotPayload(imageBase64, FileUploadSecurity.Category.Image, allowPartial);
+        var (video, videoError) = ReadSnapshotPayload(videoBase64, FileUploadSecurity.Category.Video, allowPartial);
         if (image == null && video == null)
-            throw new ArgumentException("file_empty");
+            throw new ArgumentException(imageError ?? videoError ?? "file_empty");
 
         var captureId = (uploadId ?? Guid.NewGuid()).ToString("N");
         var uploadMarker = " | upload-id=" + captureId;
         if (uploadId.HasValue && _db.SuspiciousEvents.Any(e => e.Username == username && e.ExamId == dto.ExamId
             && e.Details != null && e.Details.EndsWith(uploadMarker)))
-            return;
+            return (imageError, videoError);
 
         var candidateKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             Encoding.UTF8.GetBytes(username))).ToLowerInvariant();
@@ -371,7 +367,7 @@ public class MonitoringService
         if (image != null)
         {
             var path = Path.Combine(dir, stem + ".jpg");
-            WriteMedia(path, StampSnapshot(image, capturedAt, username));
+            WriteMedia(path, image);
             details.Append(" | لقطة مراقبة محفوظة: ").Append(path);
         }
 
@@ -382,8 +378,13 @@ public class MonitoringService
             details.Append(" | فيديو توثيق: ").Append(path);
         }
 
+        if (imageError != null)
+            details.Append(" | تعذر حفظ الصورة");
+        if (videoError != null)
+            details.Append(" | تعذر حفظ الفيديو");
         dto.Details = details.Append(uploadMarker).ToString();
         LogEvent(username, dto);
+        return (imageError, videoError);
     }
 
     private static void WriteMedia(string path, byte[] bytes)
@@ -410,50 +411,22 @@ public class MonitoringService
         }
     }
 
-    private static byte[] StampSnapshot(byte[] source, DateTime capturedAt, string username)
+    private static (byte[]? Data, string? Error) ReadSnapshotPayload(string? payload,
+        FileUploadSecurity.Category category, bool allowPartial)
     {
+        if (string.IsNullOrWhiteSpace(payload))
+            return (null, null);
         try
         {
-            using var ms = new MemoryStream(source);
-            using var image = Image.FromStream(ms);
-            using var bitmap = new Bitmap(image);
-            using var g = Graphics.FromImage(bitmap);
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            var w = bitmap.Width;
-            var h = bitmap.Height;
-            var overlayHeight = Math.Max(48, (int)Math.Round(h * 0.14f));
-            var pad = Math.Max(10, (int)Math.Round(w * 0.015f));
-            using (var brush = new SolidBrush(Color.FromArgb(190, 8, 20, 30)))
-            {
-                g.FillRectangle(brush, 0, h - overlayHeight, w, overlayHeight);
-            }
-
-            var datePart = capturedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-            var timePart = capturedAt.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
-            var namePart = string.IsNullOrWhiteSpace(username) ? "" : username.Trim();
-            var fs = Math.Max(14, Math.Min(20, (int)Math.Round(w * 0.02f)));
-            using var font = new Font("Tahoma", fs, FontStyle.Bold);
-            using var textBrush = new SolidBrush(Color.FromArgb(245, 255, 255, 255));
-            var fm = g.MeasureString("Ag", font);
-            var y1 = h - overlayHeight + pad + (int)fm.Height * 0.7f;
-            var y2 = Math.Min(h - pad, y1 + fm.Height);
-            if (!string.IsNullOrEmpty(namePart))
-            {
-                g.DrawString(namePart, font, textBrush, pad, y1 - fm.Height);
-            }
-
-            var tw = g.MeasureString(timePart, font).Width;
-            g.DrawString(timePart, font, textBrush, w - pad - tw, y1 - fm.Height);
-            var dw = g.MeasureString(datePart, font).Width;
-            g.DrawString(datePart, font, textBrush, w - pad - dw, y2 - fm.Height);
-
-            using var outMs = new MemoryStream();
-            bitmap.Save(outMs, ImageFormat.Jpeg);
-            return outMs.ToArray();
+            return (FileUploadSecurity.ValidateBase64Media(DecodeBase64Payload(payload), category), null);
         }
-        catch (Exception)
+        catch (FormatException) when (allowPartial)
         {
-            return source;
+            return (null, "file_encoding");
+        }
+        catch (ArgumentException ex) when (allowPartial)
+        {
+            return (null, ex.Message);
         }
     }
 
