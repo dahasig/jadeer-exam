@@ -318,6 +318,17 @@ public class AdminController : AppControllerBase
         }
     }
 
+    [HttpPost("exams/{id:long}/revert-to-draft")]
+    [ValidateAntiForgeryToken]
+    public IActionResult RevertExamToDraft(long id)
+    {
+        if (!IsStaff || !_examService.CanManageExam(CurrentUsername, id))
+            return Forbid();
+        return _examService.RevertUnusedPublishedExam(CurrentUsername, id)
+            ? Redirect("/admin/operations?view=list&draft_restored=1")
+            : Redirect("/admin/operations?view=list&error=draft_restore_blocked");
+    }
+
     [HttpPost("exams/{id:long}/delete")]
     [ValidateAntiForgeryToken]
     public IActionResult DeleteExam(long id)

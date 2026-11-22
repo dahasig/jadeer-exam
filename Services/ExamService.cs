@@ -997,6 +997,18 @@ public partial class ExamService
         return rows;
     }
 
+    public bool RevertUnusedPublishedExam(string staffUsername, long examId)
+    {
+        if (!CanManageExam(staffUsername, examId))
+            return false;
+
+        return _db.Exams.Where(e => e.Id == examId && e.Published
+                && !_db.ExamAllowedCandidates.Any(candidate => candidate.ExamId == e.Id)
+                && !_db.ExamAttempts.Any(attempt => attempt.ExamId == e.Id)
+                && !_db.ExamSessionStates.Any(session => session.ExamId == e.Id))
+            .ExecuteUpdate(row => row.SetProperty(e => e.Published, false)) == 1;
+    }
+
     public bool DeleteDraftExamForStaff(string staffUsername, long examId)
     {
         if (!CanManageExam(staffUsername, examId))
@@ -1799,6 +1811,8 @@ public partial class ExamService
             var lifecycle = LifecycleStatus(exam.Id);
             var assigned = _db.ExamAllowedCandidates.Count(a => a.ExamId == exam.Id);
             var attempts = DedupeAttemptsByCandidate(_db.ExamAttempts.Where(a => a.ExamId == exam.Id).ToList());
+            var hasNoAttemptsOrSessions = attempts.Count == 0
+                && !_db.ExamSessionStates.Any(session => session.ExamId == exam.Id);
             var completed = attempts.Count(a => a.SubmittedAt != null);
             var active = attempts.Count(a => a.SubmittedAt == null);
             var notStarted = Math.Max(0, assigned - attempts.Count);
@@ -1810,8 +1824,8 @@ public partial class ExamService
                 ["questionCount"] = CountQuestions(exam.Id),
                 ["lifecycle"] = lifecycle,
                 ["lifecycleLabel"] = LifecycleLabel(lifecycle),
-                ["canDeleteDraft"] = !exam.Published && attempts.Count == 0
-                    && !_db.ExamSessionStates.Any(session => session.ExamId == exam.Id),
+                ["canDeleteDraft"] = !exam.Published && hasNoAttemptsOrSessions,
+                ["canRevertToDraft"] = exam.Published && assigned == 0 && hasNoAttemptsOrSessions,
                 ["assignedCount"] = assigned,
                 ["completedCount"] = completed,
                 ["activeCount"] = active,
