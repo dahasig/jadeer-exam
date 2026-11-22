@@ -29,6 +29,7 @@
 <body class="exam-body exam-camera-locked"
       data-exam-id="@exam.Id"
       data-monitor-user="@User.Identity?.Name"
+      data-question-clock-id="@ViewBag.QuestionClockId"
       data-evidence-exam="@exam.Title"
       data-evidence-candidate="@(User.FindFirst("full_name")?.Value ?? User.Identity?.Name)"
       data-page-lang="@pageLang"
@@ -66,6 +67,7 @@
 <canvas id="monitorCanvas" hidden></canvas>
 
 <main class="card exam-panel">
+    <p id="expiredQuestionsNote" class="exam-last-question-note hidden" role="status">@Localizer["exam.questions.expired"]</p>
     <p id="lastQuestionNote" class="exam-last-question-note hidden" role="status">@Localizer["exam.lastNote"]</p>
     @{
         var st = 0;
@@ -217,7 +219,7 @@
 <script defer src="https://cdn.jsdelivr.net/npm/@@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script defer src="~/js/theme.js?v=@assetsVersion"></script>
-<script defer src="~/js/exam-question-flow.js?v=@assetsVersion"></script>
+<script defer src="~/js/exam-question-flow.js" asp-append-version="true"></script>
 <script>
     window.__RC_EXAM_CALC = {
         deg: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Localizer["exam.calculator.deg"].Value)),

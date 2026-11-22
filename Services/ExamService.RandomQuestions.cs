@@ -110,10 +110,10 @@ public partial class ExamService
         rawMaximum <= 0 || targetMaximum <= 0 ? 0
             : (int)((long)Math.Clamp(rawScore, 0, rawMaximum) * targetMaximum / rawMaximum);
 
-    public (List<Question> Questions, string? Draft) GetCandidateQuestions(ExamEntity exam, string username)
+    public (List<Question> Questions, string? Draft, long? AttemptId) GetCandidateQuestions(ExamEntity exam, string username)
     {
         if (exam.RandomQuestionCount is not int count)
-            return (GetExamQuestions(exam.Id, exam.Randomized), null);
+            return (GetExamQuestions(exam.Id, exam.Randomized), null, null);
         if (!exam.Published)
             throw new ArgumentException("draw_not_published");
 
@@ -143,7 +143,7 @@ public partial class ExamService
         });
     }
 
-    private (List<Question> Questions, string? Draft) DrawCandidateQuestions(long examId, string username, int count)
+    private (List<Question> Questions, string? Draft, long? AttemptId) DrawCandidateQuestions(long examId, string username, int count)
     {
         if (HasSubmittedAttempt(examId, username))
             throw new ArgumentException("draw_submitted");
@@ -175,7 +175,7 @@ public partial class ExamService
         if (ids.Any(id => !questionsById.ContainsKey(id)))
             throw new ArgumentException("draw_attempt_missing");
         var questions = ids.Select(id => questionsById[id]).ToList();
-        return (questions, attempt.AnswersJson);
+        return (questions, attempt.AnswersJson, attempt.Id);
     }
 
     private static long[]? SelectedIds(ExamAttempt? attempt) =>

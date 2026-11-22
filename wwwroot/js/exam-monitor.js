@@ -1010,6 +1010,7 @@ async function submitExam() {
             return;
         }
         examSubmitted = true;
+        window.clearExamQuestionClock?.();
         // Wait for already-started captures to reach the durable browser outbox.
         // The dashboard continues uploads if network confirmation takes longer.
         await Promise.allSettled(pendingCaptures);
@@ -1213,6 +1214,7 @@ async function unlockExamUiAfterCamera() {
     }
     examCameraUnlocked = true;
     document.body.classList.remove("exam-camera-locked");
+    document.dispatchEvent(new Event("jadeer-camera-ready"));
     cameraLockOverlay?.classList.add("hidden");
     if (cameraBanner) {
         cameraBanner.classList.remove("hidden");

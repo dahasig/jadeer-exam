@@ -146,8 +146,9 @@ public class ExamController : AppControllerBase
         ViewBag.Exam = exam;
         try
         {
-            var (questions, draft) = _examService.GetCandidateQuestions(exam, username);
+            var (questions, draft, attemptId) = _examService.GetCandidateQuestions(exam, username);
             ViewBag.Questions = questions;
+            ViewBag.QuestionClockId = attemptId;
             ViewBag.DraftAnswers = draft == null ? null
                 : JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(draft);
         }
