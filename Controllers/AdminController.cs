@@ -325,8 +325,9 @@ public class AdminController : AppControllerBase
         var examId = id;
         if (!IsStaff || !_examService.CanManageExam(CurrentUsername, examId))
             return Redirect("/admin/operations");
-        _examService.DeleteExamForStaff(CurrentUsername, examId);
-        return Redirect("/admin/operations?view=create&tab=exam");
+        return _examService.DeleteDraftExamForStaff(CurrentUsername, examId)
+            ? Redirect("/admin/operations?view=list&draft_deleted=1")
+            : Redirect("/admin/operations?view=list&error=draft_delete_blocked");
     }
 
     [HttpPost("exams/{id:long}/assign-grader")]

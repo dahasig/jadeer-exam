@@ -997,24 +997,15 @@ public partial class ExamService
         return rows;
     }
 
-    public void DeleteExamForStaff(string staffUsername, long examId)
+    public bool DeleteDraftExamForStaff(string staffUsername, long examId)
     {
         if (!CanManageExam(staffUsername, examId))
-            throw new ArgumentException("غير مصرح بحذف هذا الاختبار");
-        foreach (var attempt in _db.ExamAttempts.Where(a => a.ExamId == examId).ToList())
-        {
-            var username = attempt.CandidateUsername;
-            _db.ExamAttempts.Remove(attempt);
-            _db.SaveChanges();
-            if (username != null
-                && !_db.ExamAttempts.Any(a => a.ExamId == examId && a.CandidateUsername == username && a.SubmittedAt != null))
-                _examSessionService.ClearSubmitted(username, examId);
-        }
-        _db.ExamAllowedCandidates.RemoveRange(_db.ExamAllowedCandidates.Where(a => a.ExamId == examId));
-        _db.Questions.RemoveRange(_db.Questions.Where(q => q.ExamId == examId));
-        var exam = _db.Exams.Find(examId);
-        if (exam != null) _db.Exams.Remove(exam);
-        _db.SaveChanges();
+            return false;
+
+        return _db.Exams.Where(e => e.Id == examId && !e.Published
+                && !_db.ExamAttempts.Any(a => a.ExamId == e.Id)
+                && !_db.ExamSessionStates.Any(session => session.ExamId == e.Id))
+            .ExecuteDelete() == 1;
     }
 
     public bool CanManageAttempt(string staffUsername, long attemptId)
@@ -1819,6 +1810,8 @@ public partial class ExamService
                 ["questionCount"] = CountQuestions(exam.Id),
                 ["lifecycle"] = lifecycle,
                 ["lifecycleLabel"] = LifecycleLabel(lifecycle),
+                ["canDeleteDraft"] = !exam.Published && attempts.Count == 0
+                    && !_db.ExamSessionStates.Any(session => session.ExamId == exam.Id),
                 ["assignedCount"] = assigned,
                 ["completedCount"] = completed,
                 ["activeCount"] = active,

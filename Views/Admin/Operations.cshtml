@@ -44,6 +44,14 @@
 @if (opsView == "list")
 {
     <section class="card panel">
+        @if (Has("draft_deleted"))
+        {
+            <p class="form-success" role="status">@Localizer["ops.draft.deleted"]</p>
+        }
+        @if (Q("error") == "draft_delete_blocked")
+        {
+            <p class="form-error" role="alert">@Localizer["ops.draft.deleteBlocked"]</p>
+        }
         @if (Q("published") == "1")
         {
             <p class="form-success">@Localizer["ops.published.success"]</p>
@@ -138,6 +146,14 @@
                                 <a class="btn-primary" asp-controller="Admin" asp-action="Operations" asp-route-view="create" asp-route-tab="questions" asp-route-examId="@examId" asp-route-qtype="mcq">@Localizer["ops.continueSetup"]</a>
                                 <a class="btn-outline" asp-controller="Admin" asp-action="Operations" asp-route-view="create" asp-route-tab="candidates" asp-route-examId="@examId">@Localizer["ops.candidates.short"]</a>
                                 <a class="btn-outline" asp-controller="Reports" asp-action="Reports" asp-route-examId="@examId">@Localizer["ops.report"]</a>
+                                @if (ViewMap.Get(s, "canDeleteDraft") is true)
+                                {
+                                    <form method="post" asp-controller="Admin" asp-action="DeleteExam" asp-route-id="@examId"
+                                          data-confirm-msg="@Localizer["ops.draft.deleteConfirm"]"
+                                          onsubmit="return confirm(this.dataset.confirmMsg);">
+                                        <button class="btn-danger" type="submit">@Localizer["ops.draft.delete"]</button>
+                                    </form>
+                                }
                             </td>
                         </tr>
                     }
