@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Threading.RateLimiting;
+using Jadeer.Exam.Util;
 using Jadeer.Exam.Data;
 using Jadeer.Exam.Models;
 using Jadeer.Exam.Security;
@@ -15,6 +17,15 @@ public class AccountController : AppControllerBase
 {
     private const string MfaPendingKey = "MfaPendingUser";
     private const string MfaSetupSecretKey = "MfaSetupSecret";
+    private static readonly PartitionedRateLimiter<string> InvitationAttempts =
+        PartitionedRateLimiter.Create<string, string>(email => RateLimitPartition.GetFixedWindowLimiter(email,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 8,
+                Window = TimeSpan.FromMinutes(5),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
 
     private readonly AppDbContext _db;
     private readonly PasswordHasher<UserAccount> _passwordHasher;
@@ -63,9 +74,10 @@ public class AccountController : AppControllerBase
             await TryEnsureDemoUsersAsync();
 
             var user = await _db.Users.FirstOrDefaultAsync(u => u.Username == username);
-            if (user == null
-                || _passwordHasher.VerifyHashedPassword(user, user.Password, password ?? "")
-                   == PasswordVerificationResult.Failed)
+            if (user == null || !VerifyAccountPassword(user, password))
+                user = await FindInvitedCandidateAsync(username, password, user);
+
+            if (user == null)
             {
                 _audit.LoginFailure(username, ClientIp);
                 ViewBag.Error = "invalid";
@@ -88,6 +100,75 @@ public class AccountController : AppControllerBase
             ViewBag.Error = "database";
             return View();
         }
+    }
+
+    private bool VerifyAccountPassword(UserAccount user, string? password) =>
+        _passwordHasher.VerifyHashedPassword(user, user.Password, password ?? "") != PasswordVerificationResult.Failed;
+
+    private async Task<UserAccount?> FindInvitedCandidateAsync(string username, string? password, UserAccount? existing)
+    {
+        var email = username.ToLowerInvariant();
+        var code = InvitationCode(password, fromAssignment: false);
+        if (code == null || !email.Contains('@') || email.Length > 254 || existing is { Role: not Role.CANDIDATE })
+            return null;
+
+        using var permit = InvitationAttempts.AttemptAcquire(email);
+        if (!permit.IsAcquired)
+            return null;
+
+        var nowInRiyadh = DateTime.UtcNow.AddHours(3);
+        var assignments = await _db.ExamAllowedCandidates.AsNoTracking()
+            .Where(candidate => candidate.Email == email && candidate.Exam != null && candidate.Exam.Published
+                && (candidate.Exam.ClosesAt == null || candidate.Exam.ClosesAt > nowInRiyadh))
+            .Select(candidate => new { candidate.NationalId, candidate.FullName })
+            .ToListAsync();
+
+        var matching = assignments.FirstOrDefault(assignment =>
+            string.Equals(InvitationCode(assignment.NationalId, fromAssignment: true), code, StringComparison.Ordinal));
+        if (matching == null)
+            return null;
+
+        existing ??= await _db.Users.FirstOrDefaultAsync(user => user.Email == email || user.Username == email);
+        if (existing != null)
+            return existing.Role == Role.CANDIDATE ? existing : null;
+
+        var account = new UserAccount
+        {
+            Username = email,
+            Email = email,
+            FullName = string.IsNullOrWhiteSpace(matching.FullName) ? email : matching.FullName,
+            Role = Role.CANDIDATE
+        };
+        // Invitation codes belong to exam assignments, not to the general account password.
+        account.Password = _passwordHasher.HashPassword(account,
+            Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)));
+        _db.Users.Add(account);
+        try
+        {
+            await _db.SaveChangesAsync();
+            return account;
+        }
+        catch (DbUpdateException)
+        {
+            _db.Entry(account).State = EntityState.Detached;
+            var concurrent = await _db.Users.FirstOrDefaultAsync(user => user.Username == email);
+            if (concurrent == null)
+                throw;
+            return concurrent.Role == Role.CANDIDATE ? concurrent : null;
+        }
+    }
+
+    private static string? InvitationCode(string? value, bool fromAssignment)
+    {
+        var digits = NationalIdNormalizer.Normalize(value);
+        if (digits.Any(character => character is < '0' or > '9'))
+            return null;
+        return digits.Length switch
+        {
+            4 => digits,
+            10 when fromAssignment => digits[^4..],
+            _ => null
+        };
     }
 
     private async Task TryEnsureDemoUsersAsync()
