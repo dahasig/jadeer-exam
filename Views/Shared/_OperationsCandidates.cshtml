@@ -48,6 +48,11 @@
                                value="@(setupExam.ScheduledAt != null ? ((DateTime)setupExam.ScheduledAt).ToString("yyyy-MM-ddTHH:mm") : "")">
                     </label>
                     <label style="grid-column:1/-1">
+                        <span class="muted">@Localizer["ops.schedule.closes"]</span>
+                        <input type="datetime-local" name="closesAt" style="width:100%;margin-top:6px"
+                               value="@(setupExam.ClosesAt != null ? ((DateTime)setupExam.ClosesAt).ToString("yyyy-MM-ddTHH:mm") : "")">
+                    </label>
+                    <label style="grid-column:1/-1">
                         <span class="muted">@Localizer["ops.schedule.instructions"]</span>
                         <textarea name="instructions" rows="4" style="width:100%;margin-top:6px"
                                   placeholder="@Localizer["ops.schedule.instructions.placeholder"]">@setupExam.Instructions</textarea>

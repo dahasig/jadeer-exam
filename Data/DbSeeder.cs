@@ -25,6 +25,7 @@ public static class DbSeeder
 
                 db.Database.EnsureCreated();
                 EnsureRandomQuestionColumns(db);
+                EnsureExamClosingColumn(db);
                 WidenAnswerColumns(db, logger);
                 SeedUsersOnly(db, hasher);
                 logger?.LogInformation("Database ready (attempt {Attempt}/{Max}).", attempt, maxAttempts);
@@ -51,6 +52,14 @@ public static class DbSeeder
         SeedUser(db, hasher, "examiner", "Examiner User", "Examiner@123", Role.EXAMINER);
         SeedUser(db, hasher, "grader", "Grader User", "Grader@123", Role.GRADER);
         SeedUser(db, hasher, "candidate", "Candidate User", "Candidate@123", Role.CANDIDATE);
+    }
+
+    private static void EnsureExamClosingColumn(AppDbContext db)
+    {
+        if (db.Database.SqlQueryRaw<long>(
+                "SELECT CAST(COUNT(*) AS SIGNED) AS Value FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exams' AND COLUMN_NAME = 'ClosesAt'")
+            .AsEnumerable().Single() == 0)
+            db.Database.ExecuteSqlRaw("ALTER TABLE exams ADD COLUMN ClosesAt DATETIME(6) NULL");
     }
 
     private static void EnsureRandomQuestionColumns(AppDbContext db)

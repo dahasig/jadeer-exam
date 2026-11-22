@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS exams (
   CreationMode LONGTEXT NOT NULL,
   CreatedAt DATETIME(6) NOT NULL,
   ScheduledAt DATETIME(6) NULL,
+  ClosesAt DATETIME(6) NULL,
   Instructions VARCHAR(4000) NULL,
   ExaminerReminderSentAt DATETIME(6) NULL,
   ExaminerCompletionReportSentAt DATETIME(6) NULL,

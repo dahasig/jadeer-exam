@@ -34,6 +34,7 @@ public class Exam
     public string CreationMode { get; set; } = "MANUAL";
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime? ScheduledAt { get; set; }
+    public DateTime? ClosesAt { get; set; }
     public string? Instructions { get; set; }
     public DateTime? ExaminerReminderSentAt { get; set; }
     public DateTime? ExaminerCompletionReportSentAt { get; set; }

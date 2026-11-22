@@ -43,6 +43,8 @@ public class ExamController : AppControllerBase
         var username = CurrentUsername;
         if (!Privileged && !_examService.CanCandidateAccessExam(username, examId))
             return Redirect("/dashboard");
+        if (!Privileged && !_examService.IsExamEntryOpen(examId))
+            return StatusCode(403, "الدخول إلى الاختبار متاح خلال الفترة المحددة بتوقيت الرياض.");
         if (!Privileged && _examService.HasSubmittedAttempt(examId, username))
             return Redirect("/dashboard");
         if (PrecheckDone(username, examId))
@@ -76,6 +78,8 @@ public class ExamController : AppControllerBase
         var username = CurrentUsername;
         if (!Privileged && !_examService.CanCandidateAccessExam(username, examId))
             return Redirect("/dashboard");
+        if (!Privileged && !_examService.IsExamEntryOpen(examId))
+            return StatusCode(403, "الدخول إلى الاختبار متاح خلال الفترة المحددة بتوقيت الرياض.");
         if (!Privileged && _examService.HasSubmittedAttempt(examId, username))
             return Redirect("/dashboard");
         if (!string.Equals(agree, "on", StringComparison.OrdinalIgnoreCase)
@@ -129,6 +133,8 @@ public class ExamController : AppControllerBase
         var username = CurrentUsername;
         if (!Privileged && !_examService.CanCandidateAccessExam(username, examId))
             return Redirect("/dashboard");
+        if (!Privileged && !_examService.IsExamEntryOpen(examId))
+            return StatusCode(403, "الدخول إلى الاختبار متاح خلال الفترة المحددة بتوقيت الرياض.");
         if (!Privileged && _examService.HasSubmittedAttempt(examId, username))
             return Redirect("/dashboard");
         if (!Privileged && !PrecheckDone(username, examId))
@@ -235,6 +241,9 @@ public class ExamController : AppControllerBase
                 status = "precheck_required",
                 message = "يجب قراءة التعليمات ورفع الهوية قبل بدء الاختبار."
             });
+
+        if (!Privileged && !_examService.IsExamEntryOpen(examId))
+            return StatusCode(403, new { status = "exam_window_closed", message = "الدخول إلى الاختبار متاح خلال الفترة المحددة بتوقيت الرياض." });
 
         var cid = body != null && body.TryGetValue("clientSessionId", out var c) ? (c ?? "").Trim() : "";
         if (cid.Length == 0)

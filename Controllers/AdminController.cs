@@ -293,7 +293,7 @@ public class AdminController : AppControllerBase
 
     [HttpPost("exams/{id:long}/schedule")]
     [ValidateAntiForgeryToken]
-    public IActionResult SaveSchedule(long id, string? scheduledAt, string? instructions)
+    public IActionResult SaveSchedule(long id, string? scheduledAt, string? closesAt, string? instructions)
     {
         var examId = id;
         if (!IsStaff || !_examService.CanManageExam(CurrentUsername, examId))
@@ -301,7 +301,7 @@ public class AdminController : AppControllerBase
         DateTime? when = null;
         if (!string.IsNullOrWhiteSpace(scheduledAt))
         {
-            if (!DateTime.TryParse(scheduledAt, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var parsed)
+            if (!DateTime.TryParse(scheduledAt, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
                 && !DateTime.TryParse(scheduledAt, out parsed))
                 return Redirect($"/admin/operations?view=create&tab=candidates&examId={examId}&error=schedule_invalid");
             when = parsed;
@@ -309,7 +309,15 @@ public class AdminController : AppControllerBase
 
         try
         {
-            _examService.UpdateExamSchedule(CurrentUsername, examId, when, instructions);
+            DateTime? closing = null;
+            if (!string.IsNullOrWhiteSpace(closesAt))
+            {
+                if (!DateTime.TryParseExact(closesAt, "yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture,
+                        DateTimeStyles.None, out var parsedClosing))
+                    throw new ArgumentException("Invalid closing time.");
+                closing = parsedClosing;
+            }
+            _examService.UpdateExamSchedule(CurrentUsername, examId, when, closing, instructions);
             return Redirect($"/admin/operations?view=create&tab=candidates&examId={examId}&schedule_saved=1");
         }
         catch

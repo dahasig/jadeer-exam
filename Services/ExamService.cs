@@ -240,6 +240,16 @@ public partial class ExamService
             a.ExamId == examId && a.Email.ToLower() == email.ToLower());
     }
 
+    // Schedule fields are stored as Riyadh wall-clock values.
+    public bool IsExamEntryOpen(long examId)
+    {
+        var exam = _db.Exams.Find(examId);
+        if (exam == null) return false;
+        if (!exam.ClosesAt.HasValue) return true;
+        var now = DateTime.UtcNow.AddHours(3);
+        return now < exam.ClosesAt.Value && (exam.ScheduledAt == null || now >= exam.ScheduledAt.Value);
+    }
+
     public bool HasSubmittedAttempt(long examId, string username) =>
         _db.ExamAttempts.Any(a => a.ExamId == examId && a.CandidateUsername == username && a.SubmittedAt != null);
 
@@ -1682,12 +1692,15 @@ public partial class ExamService
 
     public bool IsExamMailEnabled() => _examNotificationService.MailConfigured();
 
-    public void UpdateExamSchedule(string staffUsername, long examId, DateTime? scheduledAt, string? instructions)
+    public void UpdateExamSchedule(string staffUsername, long examId, DateTime? scheduledAt, DateTime? closesAt, string? instructions)
     {
         if (!CanManageExam(staffUsername, examId))
             throw new ArgumentException("forbidden");
         var exam = _db.Exams.Find(examId) ?? throw new KeyNotFoundException();
+        if (closesAt.HasValue && scheduledAt.HasValue && closesAt.Value <= scheduledAt.Value)
+            throw new ArgumentException("Closing must be after opening.");
         exam.ScheduledAt = scheduledAt;
+        exam.ClosesAt = closesAt;
         exam.Instructions = instructions?.Trim();
         _db.SaveChanges();
     }
