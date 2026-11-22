@@ -3,7 +3,6 @@
     const timer = document.getElementById("questionTimer");
     const progress = document.getElementById("questionProgress");
     const next = document.getElementById("nextQuestionBtn");
-    const previous = document.getElementById("prevQuestionBtn");
     const lastNote = document.getElementById("lastQuestionNote");
     const expiredMessage = document.getElementById("expiredQuestionsNote");
     const examData = document.body.dataset;
@@ -27,6 +26,13 @@
 
     const clock = loadClock() || { remaining: {}, answers: {}, activeId: null, deadline: null };
     const questionId = (block) => block.dataset.questionId;
+    // Legacy exams may shuffle their markup on refresh. Keep this attempt's first order.
+    if (Array.isArray(clock.order)) {
+        const position = new Map(clock.order.map((id, index) => [id, index]));
+        blocks.sort((a, b) => (position.get(questionId(a)) ?? blocks.length)
+            - (position.get(questionId(b)) ?? blocks.length));
+    }
+    clock.order = blocks.map(questionId);
     let active = blocks.findIndex(block => questionId(block) === clock.activeId);
     let handle = null;
 
@@ -42,8 +48,8 @@
         return clock.remaining[questionId(blocks[index])] === 0;
     }
 
-    function findOpen(from, step) {
-        for (let i = from + step; i >= 0 && i < blocks.length; i += step) {
+    function findNext(from) {
+        for (let i = from + 1; i < blocks.length; i++) {
             if (!isExpired(i)) return i;
         }
         return -1;
@@ -85,7 +91,7 @@
             + minutes + ":" + String(seconds % 60).padStart(2, "0");
     }
 
-    function expireActive() {
+    function closeActive() {
         const block = blocks[active];
         if (!block) return;
         const qid = questionId(block);
@@ -97,9 +103,7 @@
     }
 
     function updateNavigation() {
-        const before = active >= 0 ? findOpen(active, -1) : -1;
-        const after = active >= 0 ? findOpen(active, 1) : -1;
-        if (previous) previous.disabled = before < 0;
+        const after = active >= 0 ? findNext(active) : -1;
         if (next) {
             next.disabled = after < 0;
             next.classList.toggle("is-disabled", after < 0);
@@ -109,7 +113,7 @@
         if (progress) {
             const template = progress.dataset.template || "السؤال {0} من {1}";
             progress.textContent = active < 0 ? "" : template
-                .replace("{0}", blocks[active].dataset.displayNumber || active + 1)
+                .replace("{0}", active + 1)
                 .replace("{1}", blocks.length);
         }
     }
@@ -120,6 +124,7 @@
         handle = null;
         const previousDeadline = resume ? clock.deadline : null;
         active = index;
+        clock.completed = index < 0;
         clock.activeId = active >= 0 ? questionId(blocks[active]) : null;
         clock.deadline = null;
         blocks.forEach((block, i) => { block.style.display = i === active ? "" : "none"; });
@@ -143,38 +148,43 @@
             showCountdown(remaining);
             return;
         }
-        expireActive();
-        const after = findOpen(active, 1);
-        showQuestion(after >= 0 ? after : findOpen(active, -1));
+        closeActive();
+        showQuestion(findNext(active));
     }
 
-    function navigate(step) {
+    function advance() {
         if (active < 0 || clock.deadline == null) return;
         const remaining = clock.deadline - Date.now();
         if (remaining <= 0) {
             tick();
             return;
         }
-        const destination = findOpen(active, step);
+        const destination = findNext(active);
         if (destination < 0) return;
-        clock.remaining[clock.activeId] = remaining;
-        rememberAnswer(blocks[active]);
+        closeActive();
         showQuestion(destination);
     }
 
     function startQuestionClock() {
         if (!blocks.length) return;
-        if (active >= 0 && clock.deadline != null && clock.deadline <= Date.now()) expireActive();
+        if (clock.completed) {
+            showQuestion(-1);
+            return;
+        }
+        if (active >= 0 && clock.deadline != null && clock.deadline <= Date.now()) closeActive();
         if (active >= 0 && !isExpired(active)) {
             showQuestion(active, true);
             return;
         }
-        const after = findOpen(active, 1);
-        showQuestion(after >= 0 || active < 0 ? after : findOpen(active, -1));
+        showQuestion(findNext(active));
     }
 
     blocks.forEach((block, index) => {
         block.style.display = "none";
+        if (index < active || clock.completed) clock.remaining[questionId(block)] = 0;
+        const number = block.querySelector(".question-num");
+        if (number && block.dataset.displayNumber !== String(index + 1))
+            number.textContent = number.textContent.replace(/\d+$/, String(index + 1));
         if (Object.hasOwn(clock.answers, questionId(block))) restoreAnswer(block);
         else rememberAnswer(block);
         if (isExpired(index)) {
@@ -190,8 +200,7 @@
         });
     });
 
-    next?.addEventListener("click", () => navigate(1));
-    previous?.addEventListener("click", () => navigate(-1));
+    next?.addEventListener("click", advance);
     if (document.body.classList.contains("exam-camera-locked")) {
         document.addEventListener("jadeer-camera-ready", startQuestionClock, { once: true });
     } else {
