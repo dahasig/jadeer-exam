@@ -9,6 +9,7 @@ const monitoringOutbox = (() => {
         return new Promise((resolve, reject) => {
             const req = indexedDB.open(IDB_NAME, IDB_VER);
             req.onerror = () => reject(req.error);
+            req.onblocked = () => reject(new Error("Monitoring storage is busy."));
             req.onsuccess = () => resolve(req.result);
             req.onupgradeneeded = () => {
                 const db = req.result;
@@ -78,11 +79,11 @@ const monitoringOutbox = (() => {
                     });
                     if (r.redirected) return;
                     if (r.ok && row.url === "/monitoring/snapshot") {
-                    const result = await r.json().catch(() => null);
-                    if (result?.status === "partial")
-                        window.dispatchEvent(new Event("monitoring-upload-rejected"));
-                }
-                if (!r.ok) {
+                        const result = await r.json().catch(() => null);
+                        if (result?.status === "partial")
+                            window.dispatchEvent(new Event("monitoring-upload-rejected"));
+                    }
+                    if (!r.ok) {
                         if (![400, 403, 413, 415, 422].includes(r.status)) return;
                         window.dispatchEvent(new Event("monitoring-upload-rejected"));
                     }

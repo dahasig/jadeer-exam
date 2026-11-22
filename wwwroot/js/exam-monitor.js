@@ -229,6 +229,7 @@ async function monitoringPost(url, bodyObj) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "same-origin",
+            signal: AbortSignal.timeout(15000),
             body
         });
         if (r.ok && !r.redirected) {
@@ -302,7 +303,6 @@ async function recordShortVideoClip(maxMs = 8000) {
     if (!cameraStream || typeof MediaRecorder === "undefined") {
         return null;
     }
-    await ensureEvidenceAudioAvailable();
     const stream = buildEvidenceStream();
     if (!stream || stream.getVideoTracks().length === 0) {
         return null;
@@ -363,7 +363,15 @@ async function recordShortVideoClip(maxMs = 8000) {
         if (recorder.state !== "inactive") {
             recorder.stop();
         }
-        return await stopped;
+        let finalizationTimer;
+        try {
+            return await Promise.race([
+                stopped,
+                new Promise((resolve) => { finalizationTimer = window.setTimeout(() => resolve(null), 2500); })
+            ]);
+        } finally {
+            window.clearTimeout(finalizationTimer);
+        }
     } catch (_) {
         return null;
     } finally {
@@ -411,38 +419,14 @@ function buildEvidenceStream() {
     return new MediaStream([...videoTracks, ...audioTracks]);
 }
 
-async function ensureEvidenceAudioAvailable() {
-    const current = buildEvidenceStream();
-    if (current && current.getAudioTracks().length > 0) {
-        return true;
-    }
-    try {
-        const dedicated = await acquireDedicatedAudioStream();
-        if (dedicated && dedicated.getAudioTracks().length > 0) {
-            if (!audioMonitorStream) {
-                audioMonitorStream = dedicated;
-                audioUsesDedicatedStream = true;
-            } else if (!audioMonitorStream.getAudioTracks().some((t) => t.readyState === "live")) {
-                audioMonitorStream = dedicated;
-                audioUsesDedicatedStream = true;
-            } else {
-                // احتفظ بالمسار مؤقتاً على الكاميرا إن أمكن
-                dedicated.getAudioTracks().forEach((t) => {
-                    if (cameraStream && !cameraStream.getAudioTracks().length) {
-                        cameraStream.addTrack(t);
-                    }
-                });
-            }
-        }
-    } catch (_) {
-        /* بدون صوت إن رُفض الميكروفون */
-    }
-    const again = buildEvidenceStream();
-    return !!(again && again.getAudioTracks().length > 0);
-}
-
-async function uploadSnapshotWithImage(eventType, severity, details, imageBase64, videoBase64 = null) {
+async function uploadSnapshotWithImage(eventType, severity, details, imageBase64, videoBase64 = null,
+                                       confidenceScore = null) {
+    const snapshotType = eventType.endsWith("_SNAPSHOT") ? eventType : eventType + "_SNAPSHOT";
     if (!imageBase64 && !videoBase64) {
+        await monitoringPost("/monitoring/event", {
+            eventType: snapshotType, severity, confidenceScore,
+            details: (details || "") + " | تعذر التقاط الصورة والفيديو"
+        });
         return;
     }
     const stream = buildEvidenceStream();
@@ -459,8 +443,9 @@ async function uploadSnapshotWithImage(eventType, severity, details, imageBase64
         docHint = "فيديو فقط (تعذرت الصورة)";
     }
     await monitoringPost("/monitoring/snapshot", {
-        eventType: eventType.endsWith("_SNAPSHOT") ? eventType : `${eventType}_SNAPSHOT`,
+        eventType: snapshotType,
         severity,
+        confidenceScore,
         details: details ? `${details} | توثيق: ${docHint}` : `توثيق: ${docHint}`,
         imageBase64: imageBase64 || undefined,
         videoBase64: videoBase64 || undefined
@@ -474,24 +459,14 @@ async function captureEvidenceBundle(baseEventType, severity, details) {
     if (!videoClip) {
         videoClip = await recordShortVideoClip(4000);
     }
-    if (pre) {
-        await uploadSnapshotWithImage(`${baseEventType}_PRE`, severity, `${details} | دليل قبل الحدث`, pre, videoClip);
-    }
-    if (during) {
-        await uploadSnapshotWithImage(
-            `${baseEventType}_DURING`,
-            severity,
-            `${details} | دليل أثناء الحدث (صورة + فيديو إلزامي)`,
-            during,
-            videoClip
-        );
-    }
+    await Promise.all([
+        uploadSnapshotWithImage(baseEventType + "_PRE", severity, details + " | دليل قبل الحدث", pre, videoClip),
+        uploadSnapshotWithImage(baseEventType + "_DURING", severity, details + " | دليل أثناء الحدث", during, videoClip)
+    ]);
     await new Promise((resolve) => window.setTimeout(resolve, 2000));
     const post = captureCompressedJpeg();
-    if (post) {
-        const postVideo = await recordShortVideoClip(3500);
-        await uploadSnapshotWithImage(`${baseEventType}_POST`, severity, `${details} | دليل بعد الحدث`, post, postVideo);
-    }
+    const postVideo = await recordShortVideoClip(3500);
+    await uploadSnapshotWithImage(baseEventType + "_POST", severity, details + " | دليل بعد الحدث", post, postVideo);
 }
 
 async function evaluateCorrelationRules(triggerEventType, triggerSeverity, triggerDetails) {
@@ -507,7 +482,7 @@ async function evaluateCorrelationRules(triggerEventType, triggerSeverity, trigg
     const merged =
         `CorrelationRule=${ruleId} | Trigger=${triggerEventType}/${triggerSeverity} | ` +
         `detail=${triggerDetails || "-"}`;
-    await monitoringPost("/monitoring/event", {
+    const eventLog = monitoringPost("/monitoring/event", {
         ...examContext(),
         eventType: "CRITICAL_CORRELATED_PATTERN",
         severity: "HIGH",
@@ -516,8 +491,9 @@ async function evaluateCorrelationRules(triggerEventType, triggerSeverity, trigg
     applyRiskDelta("CRITICAL_CORRELATED_PATTERN", "HIGH");
     showWarning(mon("critical", "تم تفعيل تنبيه حرج مركب للمرشح"));
     if (!examSubmitting && !examSubmitted) {
-        await trackCapture(captureEvidenceBundle("CRITICAL_CORRELATED_PATTERN", "HIGH", merged));
+        void trackCapture(captureEvidenceBundle("CRITICAL_CORRELATED_PATTERN", "HIGH", merged));
     }
+    await eventLog;
 }
 
 function renderRiskHud() {
@@ -953,11 +929,12 @@ function clearWarning() {
 
 async function logEvent(eventType, severity, details, confidenceScore = null) {
     applyRiskDelta(eventType, severity);
-    await monitoringPost("/monitoring/event", { eventType, severity, details, confidenceScore });
     pushBehaviorEvent(eventType);
-    // كل ملاحظة — مهما صغرت — تُرفق بصورة وفيديو (مع صوت عند توفر الميكروفون)
-    void enqueueMandatoryMedia(eventType, severity, details);
-    await evaluateCorrelationRules(eventType, severity, details);
+    void uploadSnapshot(eventType, severity, details, confidenceScore);
+    await Promise.all([
+        monitoringPost("/monitoring/event", { eventType, severity, details, confidenceScore }),
+        evaluateCorrelationRules(eventType, severity, details)
+    ]);
 }
 
 function captureCompressedJpeg(maxWidth = 720, quality = 0.72) {
@@ -968,61 +945,40 @@ function captureCompressedJpeg(maxWidth = 720, quality = 0.72) {
     return monitorCanvas.toDataURL("image/jpeg", quality);
 }
 
-/** طابور تسلسلي: يمنع تداخل MediaRecorder ويفقد الملاحظات الصغيرة */
-let mandatoryMediaChain = Promise.resolve();
+// Nearby observations share a recording that covers each event, while each gets its own image.
+let activeObservationClip = null;
 
-function enqueueMandatoryMedia(eventType, severity, details) {
-    mandatoryMediaChain = mandatoryMediaChain
-        .then(() => attachMandatoryMedia(eventType, severity, details))
-        .catch(() => {});
-    return mandatoryMediaChain;
+function observationClip() {
+    const now = Date.now();
+    if (activeObservationClip && activeObservationClip.until - now >= 1500)
+        return activeObservationClip.promise;
+
+    const next = { until: now + SNAPSHOT_VIDEO_MS, promise: recordShortVideoClip(SNAPSHOT_VIDEO_MS) };
+    activeObservationClip = next;
+    void next.promise.finally(() => {
+        if (activeObservationClip === next) activeObservationClip = null;
+    }).catch(() => {});
+    return next.promise;
 }
 
-async function attachMandatoryMedia(eventType, severity, details) {
-    if (!cameraStream) {
-        return;
-    }
-    try {
-        await uploadSnapshot(eventType, severity, details);
-    } catch (_) {
-        /* لا نوقف الاختبار إذا فشل الرفع */
-    }
-}
-
-function uploadSnapshot(eventType, severity, details) {
+function uploadSnapshot(eventType, severity, details, confidenceScore = null) {
     if (examSubmitting || examSubmitted) return Promise.resolve();
-    return trackCapture(captureSnapshot(eventType, severity, details));
+    return trackCapture(captureSnapshot(eventType, severity, details, confidenceScore));
 }
 
 function trackCapture(promise) {
     pendingCaptures.add(promise);
-    return promise.finally(() => pendingCaptures.delete(promise));
+    return promise.catch(() => warnMonitoringStorage()).finally(() => pendingCaptures.delete(promise));
 }
 
-async function captureSnapshot(eventType, severity, details) {
-    if (!cameraStream) {
-        return;
-    }
-    let imageBase64 = null;
-    let videoBase64 = null;
-    // محاولات متعددة: لا نكتفي بصورة بلا فيديو إن أمكن
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        if (!imageBase64) {
-            imageBase64 = captureCompressedJpeg();
-        }
-        if (!videoBase64) {
-            const duration = attempt === 1 ? SNAPSHOT_VIDEO_MS : Math.max(3500, SNAPSHOT_VIDEO_MS - attempt * 800);
-            videoBase64 = await recordShortVideoClip(duration);
-        }
-        if (imageBase64 && videoBase64) {
-            break;
-        }
-        await new Promise((r) => window.setTimeout(r, 200));
-    }
-    if (!imageBase64 && !videoBase64) {
-        return;
-    }
-    await uploadSnapshotWithImage(eventType, severity, details, imageBase64, videoBase64);
+async function captureSnapshot(eventType, severity, details, confidenceScore) {
+    let image = captureCompressedJpeg();
+    let video = cameraStream ? await observationClip() : null;
+    if (!video && cameraStream && typeof MediaRecorder !== "undefined")
+        video = await observationClip();
+    if (!image) image = captureCompressedJpeg();
+
+    await uploadSnapshotWithImage(eventType, severity, details, image, video, confidenceScore);
 }
 
 async function logEventWithSnapshot(eventType, severity, details, confidenceScore = null) {
@@ -1041,6 +997,7 @@ async function autoSave() {
 async function submitExam() {
     if (examSubmitting || examSubmitted) return;
     examSubmitting = true;
+    submitButtons.forEach((button) => { button.disabled = true; });
     try {
         const response = await fetch(`/exam/${examId}/submit`, {
             method: "POST",
@@ -1053,9 +1010,12 @@ async function submitExam() {
             return;
         }
         examSubmitted = true;
+        // Wait for already-started captures to reach the durable browser outbox.
+        // The dashboard continues uploads if network confirmation takes longer.
+        await Promise.allSettled(pendingCaptures);
         await Promise.race([
-            Promise.allSettled(pendingCaptures).then(() => monitoringOutbox.flush()),
-            new Promise((resolve) => window.setTimeout(resolve, 20000))
+            monitoringOutbox.flush(),
+            new Promise((resolve) => window.setTimeout(resolve, 8000))
         ]);
         alert(mon("submitSuccess", "تم تسليم الاختبار بنجاح."));
         stopCamera();
@@ -1064,6 +1024,7 @@ async function submitExam() {
         showWarning(mon("submitFailed", "تعذر تسليم الاختبار. حاول مرة أخرى."));
     } finally {
         examSubmitting = false;
+        if (!examSubmitted) submitButtons.forEach((button) => { button.disabled = false; });
     }
 }
 
@@ -1484,8 +1445,9 @@ window.addEventListener("beforeunload", (e) => {
         e.preventDefault();
         e.returnValue = "";
     }
-    stopCamera();
 });
+
+window.addEventListener("pagehide", stopCamera);
 
 // لا نطلب ملء الشاشة تلقائياً — قد يقطع تفاعل زر الكاميرا في بعض المتصفحات
 
